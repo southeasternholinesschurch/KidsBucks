@@ -45,14 +45,6 @@ const origin = Astro.url.origin;
                  onclick="this.select()" />
           <div class="actions" style="margin-top:8px;">
             <button class="go copy" type="button" data-copy={cardUrl(origin, c.code)}>Copy link</button>
-            <form method="POST" style="margin:0;">
-              <input type="hidden" name="action" value="card-revoke" />
-              <input type="hidden" name="kidId" value={kidId} />
-              <input type="hidden" name="cardId" value={c.id} />
-              <button class="go go--quiet" type="submit"
-                      onclick={`return confirm('Revoke this card? It stops working straight away.')`}>
-                Revoke</button>
-            </form>
           </div>
           <p class="muted" style="margin:8px 0 0; font-size:13px;">
             Made {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}

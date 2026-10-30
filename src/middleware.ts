@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { isSetUp, readLeader, readCardKid, forgetCard } from './lib/auth';
+import { isSetUp, readLeader, readCardKid } from './lib/auth';
 
 /**
  * Everything is private except getting in.

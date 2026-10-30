@@ -7,7 +7,7 @@ import { parseRoster, groupsIn } from '../../lib/roster';
 import { searchKey } from '../../lib/bucks';
 import { colourForIndex } from '../../lib/palette';
 import { chunkRows } from '../../lib/chunk';
-import { handleCardAction, issueCard } from '../../lib/cardops';
+import { handleCardAction, issueCard, revokeAllFor } from '../../lib/cardops';
 import CardBlock from '../../components/CardBlock.astro';
 
 /**
@@ -97,6 +97,13 @@ if (Astro.request.method === 'POST') {
     /* Archived, never deleted: a ledger row points at kid_id with ON DELETE
      * CASCADE, so deleting a child would destroy years of their history. */
     await db.update(schema.kids).set({ active }).where(eq(schema.kids.id, id));
+    /*
+     * ARCHIVING KILLS THEIR CARD. A child who has left the ministry was
+     * keeping a working tag that opened their page for ever, which is the one
+     * situation where a card genuinely has to stop. Restoring them does not
+     * bring it back — they get a new link, which is the safer way round.
+     */
+    if (!active) await revokeAllFor(env, id);
     return back(active ? 'shown' : 'archived');
   }
 }
@@ -120,7 +127,8 @@ const focus = focusId
   : null;
 const DONE: Record<string, string> = {
   added: 'Added, with a card ready below.', saved: 'Saved.',
-  archived: 'Archived — their history is kept.', shown: 'Back on the roster.',
+  archived: 'Archived — their history is kept, and their card stopped working.',
+  shown: 'Back on the roster. Give them a new card link if they need one.',
   card: 'Card made.', replaced: 'Replaced. The old card stopped working immediately.',
   revoked: 'Card revoked.',
 };

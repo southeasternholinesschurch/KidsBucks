@@ -97,8 +97,8 @@ link.
 - **As you add a child.** Adding one child issues their card straight away and
   shows the link with a *Copy link* button, so you can write it to an NFC tag
   without going anywhere else.
-- **On a child's page.** Scroll to the bottom. Same block: the code, the link,
-  copy, revoke, and *Lost — make a replacement*.
+- **On a child's page.** Scroll to the bottom. Same block: the code, the
+  link, a copy button, and *Lost or broken — new link*.
 - **A whole class at once.** Manage → Cards, pick a class, press "Make the
   missing ones", then "Print these cards". Only children without an active
   card get one, so it is safe to press twice. Three per row on plain paper.
@@ -106,10 +106,16 @@ link.
 **For NFC tags**, copy the link and write it to the tag with any NFC writer
 app — it is an ordinary URL. Tapping the tag opens that child's page.
 
-**If a card is lost**, use *Lost — make a replacement* on the child's page.
-That revokes the old one immediately — including on a phone that has already
+**If a card is lost**, use *Lost or broken — new link* on the child's page.
+That kills the old one immediately — including on a phone that has already
 scanned it, because the session names the card rather than the child — and
-issues a new link to write to a fresh tag.
+gives you a fresh link to write to a new tag.
+
+**There is no bare "revoke" button**, on purpose. Stopping a card and giving
+nothing back is not a situation that comes up: either the card is lost and
+needs replacing, or the child has left — and **archiving a child kills their
+card automatically**. Restoring them later does not bring the old tag back;
+give them a new link, which is the safer way round.
 
 **Giving points** — Tap a class, then either "+5" under *Everyone here* for
 the whole class, or tap one child. Every entry records which leader made it.
@@ -132,9 +138,10 @@ app only does the arithmetic.
   roster.
 - **A child's card opens their page and nothing else.** Not the roster, not
   another child, and not the card block itself — only a leader can reissue a
-  card. If one goes missing, use *Lost — make a replacement* on the child's
-  page; it stops working immediately, including on a phone that already
-  scanned it.
+  card. If one goes missing, use *Lost or broken — new link*; the old one
+  stops working immediately, including on a phone that already scanned it.
+- **Archiving a child kills their card.** A child who leaves should not keep a
+  working tag.
 - **Leader PINs lock after repeated wrong guesses** — nothing for the first
   four, then 5, 15 and 60 minutes.
 - **Two children with the same name in the same class look identical.** The

@@ -1,6 +1,6 @@
 ---
 import Shell from '../../layouts/Shell.astro';
-import { and, eq, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getDb, schema, nowIso } from '../../db';
 import { kidsInGroup, batchSummary } from '../../lib/query';
 import { parseAmount, newBatchId, MAX_AMOUNT, PRESETS } from '../../lib/bucks';

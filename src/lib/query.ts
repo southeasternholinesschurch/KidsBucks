@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, like, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db';
 
 /**

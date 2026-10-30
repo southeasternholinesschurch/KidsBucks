@@ -1,6 +1,6 @@
 ---
 import Shell from '../../layouts/Shell.astro';
-import { and, eq, isNull, inArray } from 'drizzle-orm';
+import { and, isNull, inArray } from 'drizzle-orm';
 import { getDb, schema, nowIso } from '../../db';
 import { allGroups, kidsInGroup } from '../../lib/query';
 import { newCardCode, formatCode } from '../../lib/cards';
@@ -54,11 +54,6 @@ if (Astro.request.method === 'POST') {
     }
   }
 
-  if (act === 'revoke') {
-    const id = Number(form.get('id') ?? 0);
-    await db.update(schema.cards).set({ revokedAt: nowIso() }).where(eq(schema.cards.id, id));
-    return Astro.redirect(`/manage/cards?group=${gRaw ?? ''}&done=revoked`, 303);
-  }
 }
 
 type Row = { cardId: number; code: string; name: string; groupName: string | null };
@@ -78,7 +73,6 @@ if (groupId !== undefined) {
 }
 const origin = Astro.url.origin;
 const justMade = Number(Astro.url.searchParams.get('made') ?? 0);
-const done = Astro.url.searchParams.get('done');
 ---
 <Shell title="Cards" back="/manage">
   <div class="noprint">
@@ -92,7 +86,6 @@ const done = Astro.url.searchParams.get('done');
     {justMade === 0 && Astro.url.searchParams.has('made') && (
       <div class="card ok" style="margin:14px 0;">Everyone in that class already had a card.</div>
     )}
-    {done === 'revoked' && <div class="card ok" style="margin:14px 0;">Card revoked.</div>}
 
     <div class="card">
       <h2>Make cards for a class</h2>

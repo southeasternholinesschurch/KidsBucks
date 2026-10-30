@@ -45,17 +45,21 @@ export async function issueCard(env: { DB: D1Database }, kidId: number, label?: 
  * child, revoking cuts off a phone that already scanned it too.
  */
 export async function replaceCard(env: { DB: D1Database }, kidId: number, label?: string | null) {
-  const db = getDb(env);
-  await db.update(schema.cards).set({ revokedAt: nowIso() })
-    .where(and(eq(schema.cards.kidId, kidId), isNull(schema.cards.revokedAt)));
+  await revokeAllFor(env, kidId);
   return issueCard(env, kidId, label);
 }
 
-export async function revokeCard(env: { DB: D1Database }, cardId: number, kidId: number) {
-  /* Scoped to the child as well as the card id, so a card belonging to
-   * somebody else cannot be revoked by editing a form value. */
+/**
+ * Kill every card a child holds.
+ *
+ * NOT exposed as a button anywhere. Revoking on its own — stop this working,
+ * give nothing back — is not a thing anybody wants: a lost card needs
+ * replacing, and a child who has left needs archiving. This is what those two
+ * are built from.
+ */
+export async function revokeAllFor(env: { DB: D1Database }, kidId: number) {
   await getDb(env).update(schema.cards).set({ revokedAt: nowIso() })
-    .where(and(eq(schema.cards.id, cardId), eq(schema.cards.kidId, kidId)));
+    .where(and(eq(schema.cards.kidId, kidId), isNull(schema.cards.revokedAt)));
 }
 
 /** One place that knows what a card's URL looks like. */
@@ -85,10 +89,6 @@ export async function handleCardAction(
   if (act === 'card-replace') {
     await replaceCard(env, kidId);
     return { handled: true, kidId, done: 'replaced' };
-  }
-  if (act === 'card-revoke') {
-    await revokeCard(env, Number(form.get('cardId') ?? 0), kidId);
-    return { handled: true, kidId, done: 'revoked' };
   }
   return { handled: false };
 }

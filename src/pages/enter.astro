@@ -1,7 +1,7 @@
 ---
 import Shell from '../layouts/Shell.astro';
 import { eq } from 'drizzle-orm';
-import { getDb, schema, nowIso } from '../db';
+import { getDb, schema } from '../db';
 import { grantLeader, lockMinutes, isLocked, lockRemaining } from '../lib/auth';
 import { allLeaders } from '../lib/query';
 import { verifyPin } from '../lib/pin';

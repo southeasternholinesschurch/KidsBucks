@@ -23,7 +23,9 @@ program — see **Why this is not the family app** below.
   link is right there to copy onto a tag), from the bottom of any child's
   page, or for a whole class at once and printed three to a row. A child
   scans theirs and sees their own total and nothing else. Lost cards are
-  replaced in one tap, and the old one dies immediately.
+  replaced in one tap and the old one dies immediately; archiving a child
+  kills their card too. There is no bare "revoke" — stopping a card and
+  giving nothing back is not a situation that comes up.
 - **Roster import.** Paste a list — or a spreadsheet — and it creates the
   children and the classes in one go.
 - **Standings.** Class totals and a top-25, for the competitive bit.
