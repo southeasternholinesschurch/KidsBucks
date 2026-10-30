@@ -1,0 +1,198 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { eq } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { allGroups, kidsInGroup, searchKids } from '../../lib/query';
+import { parseRoster, groupsIn } from '../../lib/roster';
+import { searchKey } from '../../lib/bucks';
+import { colourForIndex } from '../../lib/palette';
+import { chunkRows } from '../../lib/chunk';
+
+/**
+ * The roster.
+ *
+ * Never shows all two hundred at once: you pick a class or you search. A list
+ * of two hundred names is not a management screen, it is a scroll.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+let error: string | null = null;
+let report: { added: number; groups: number; skipped: number } | null = null;
+const back = (m: string) => Astro.redirect(`/manage/kids?done=${m}`, 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  if (act === 'add') {
+    const name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
+    const gid = Number(form.get('group') ?? 0) || null;
+    if (!name) error = 'Give them a name.';
+    else {
+      await db.insert(schema.kids).values({
+        name, searchName: searchKey(name), groupId: gid, active: 1, createdAt: nowIso(),
+      });
+      return back('added');
+    }
+  }
+
+  if (act === 'import') {
+    const parsed = parseRoster(String(form.get('roster') ?? ''));
+    if (parsed.rows.length === 0) error = 'Nothing to import.';
+    else {
+      const at = nowIso();
+      const existing = await db.select().from(schema.groups);
+      const byName = new Map(existing.map((g) => [g.name.toLowerCase(), g.id]));
+      let made = 0;
+      for (const g of groupsIn(parsed.rows)) {
+        if (byName.has(g.toLowerCase())) continue;
+        const [row] = await db.insert(schema.groups).values({
+          name: g, colour: colourForIndex(existing.length + made),
+          sort: (existing.length + made + 1) * 10, active: 1, createdAt: at,
+        }).returning();
+        byName.set(g.toLowerCase(), row.id);
+        made++;
+      }
+      /* Chunked because D1 caps BOUND PARAMETERS at 100 per statement — not
+       * rows. Five columns means eighteen children per statement; a 200-row
+       * insert would bind a thousand and be refused. See lib/chunk.ts. */
+      const values = parsed.rows.map((r) => ({
+        name: r.name, searchName: searchKey(r.name),
+        groupId: r.group ? byName.get(r.group.toLowerCase()) ?? null : null,
+        active: 1, createdAt: at,
+      }));
+      for (const part of chunkRows(values)) await db.insert(schema.kids).values(part);
+      report = { added: values.length, groups: made, skipped: parsed.skipped.length };
+    }
+  }
+
+  if (act === 'edit') {
+    const id = Number(form.get('id') ?? 0);
+    const name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
+    const gidRaw = String(form.get('group') ?? '');
+    if (!name) error = 'A child needs a name.';
+    else {
+      await db.update(schema.kids).set({
+        name, searchName: searchKey(name),
+        groupId: gidRaw === '' ? null : Number(gidRaw) || null,
+      }).where(eq(schema.kids.id, id));
+      return back('saved');
+    }
+  }
+
+  if (act === 'active') {
+    const id = Number(form.get('id') ?? 0);
+    const active = String(form.get('active') ?? '') === '1' ? 1 : 0;
+    /* Archived, never deleted: a ledger row points at kid_id with ON DELETE
+     * CASCADE, so deleting a child would destroy years of their history. */
+    await db.update(schema.kids).set({ active }).where(eq(schema.kids.id, id));
+    return back(active ? 'shown' : 'archived');
+  }
+}
+
+const groups = await allGroups(env);
+const q = (Astro.url.searchParams.get('q') ?? '').trim();
+const gFilter = Astro.url.searchParams.get('group');
+const showing = q
+  ? await searchKids(env, q, 60)
+  : gFilter !== null && gFilter !== ''
+    ? (await kidsInGroup(env, gFilter === 'none' ? null : Number(gFilter)))
+        .map((k) => ({ ...k, groupName: null as string | null }))
+    : [];
+const done = Astro.url.searchParams.get('done');
+const DONE: Record<string, string> = {
+  added: 'Added.', saved: 'Saved.', archived: 'Archived — their history is kept.', shown: 'Back on the roster.',
+};
+---
+<Shell title="Children" back="/manage">
+  <h1>Children</h1>
+  {error && <div class="card notice" style="margin:14px 0;"><strong>{error}</strong></div>}
+  {!error && done && DONE[done] && <div class="card ok" style="margin:14px 0;">{DONE[done]}</div>}
+  {report && (
+    <div class="card ok" style="margin:14px 0;">
+      <strong>Imported {report.added} {report.added === 1 ? 'child' : 'children'}.</strong>
+      <span class="muted">
+        {report.groups > 0 && <> {report.groups} new {report.groups === 1 ? 'class' : 'classes'} created.</>}
+        {report.skipped > 0 && <> {report.skipped} line(s) skipped.</>}
+      </span>
+    </div>
+  )}
+
+  <div class="card">
+    <h2>Find somebody</h2>
+    <form method="GET" class="actions">
+      <input name="q" type="search" value={q} placeholder="Name…" autocomplete="off" style="flex:1; min-width:140px;" />
+      <button class="go go--quiet" type="submit">Search</button>
+    </form>
+    <form method="GET" class="actions" style="margin-top:10px;">
+      <select name="group" style="flex:1; min-width:140px;">
+        <option value="">Pick a class…</option>
+        {groups.map((g) => <option value={g.id} selected={gFilter === String(g.id)}>{g.name}</option>)}
+        <option value="none" selected={gFilter === 'none'}>No class yet</option>
+      </select>
+      <button class="go go--quiet" type="submit">Show</button>
+    </form>
+  </div>
+
+  {showing.length > 0 && (
+    <div class="card">
+      {showing.map((k) => (
+        <details>
+          <summary class="row" style="cursor:pointer;">
+            <span class="row__main"><span class="row__name">{k.name}</span>
+              <span class="row__sub">{k.balance} bucks</span></span>
+            <span class="muted">edit</span>
+          </summary>
+          <form method="POST" class="actions" style="margin:10px 0 16px;">
+            <input type="hidden" name="action" value="edit" />
+            <input type="hidden" name="id" value={k.id} />
+            <input name="name" type="text" value={k.name} required style="flex:1; min-width:140px;" />
+            <select name="group" style="width:150px;">
+              <option value="">No class</option>
+              {groups.map((g) => <option value={g.id}>{g.name}</option>)}
+            </select>
+            <button class="go" type="submit">Save</button>
+            <a class="go go--quiet" href={`/kid/${k.id}`} style="text-decoration:none; display:inline-flex; align-items:center;">Open</a>
+          </form>
+          <form method="POST" style="margin:0 0 14px;">
+            <input type="hidden" name="action" value="active" />
+            <input type="hidden" name="id" value={k.id} />
+            <input type="hidden" name="active" value="0" />
+            <button class="go go--danger" type="submit"
+                    onclick="return confirm('Archive this child? Their history is kept.')">Archive</button>
+          </form>
+        </details>
+      ))}
+    </div>
+  )}
+
+  <div class="card">
+    <h2>Add one child</h2>
+    <form method="POST" class="actions">
+      <input type="hidden" name="action" value="add" />
+      <input name="name" type="text" placeholder="Name" required autocomplete="off" style="flex:1; min-width:140px;" />
+      <select name="group" style="width:150px;">
+        <option value="">No class</option>
+        {groups.map((g) => <option value={g.id}>{g.name}</option>)}
+      </select>
+      <button class="go" type="submit">Add</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Import a roster</h2>
+    <p class="muted" style="margin:-4px 0 10px; font-size:14px;">
+      One child per line, optionally <code>Name, Class</code>. Straight from a
+      spreadsheet works — commas or tabs. Classes that do not exist yet are
+      created. Nothing is matched against existing children, so importing the
+      same list twice makes duplicates.
+    </p>
+    <form method="POST">
+      <input type="hidden" name="action" value="import" />
+      <label class="field">
+        <textarea name="roster" placeholder={"Jacob Smith, K-2nd\nAva Johnson, K-2nd"}></textarea>
+      </label>
+      <button class="go" type="submit">Import</button>
+    </form>
+  </div>
+</Shell>

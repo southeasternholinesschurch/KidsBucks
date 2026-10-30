@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "kidsbucks", "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "4341"], "port": 4341 }
+  ]
+}

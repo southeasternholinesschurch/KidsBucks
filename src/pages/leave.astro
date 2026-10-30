@@ -1,0 +1,7 @@
+---
+import { forgetLeader, forgetCard } from '../lib/auth';
+/** Sign out. One tap, so a tablet left on a table does not stay open. */
+forgetLeader(Astro.cookies);
+forgetCard(Astro.cookies);
+return Astro.redirect('/enter', 303);
+---

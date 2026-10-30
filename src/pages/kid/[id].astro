@@ -1,0 +1,188 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { and, eq } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { getKid, balanceOfKid, historyPage, PAGE } from '../../lib/query';
+import { parseAmount, PRESETS, MAX_AMOUNT, REASON_LABEL, encouragement } from '../../lib/bucks';
+import { tintStyle } from '../../lib/colour';
+import { UNGROUPED_COLOUR } from '../../lib/palette';
+
+/**
+ * One child: their number, the buttons, and where it came from.
+ *
+ * Reached by tapping a name in a class, by search, or by scanning a card.
+ * A child holding a card may read this page and nothing else; the middleware
+ * has already made sure of that, and the check below is the real one for
+ * writes — a hidden button is not a disabled one.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+const leader = Astro.locals.leader;
+const cardOnly = !leader && Astro.locals.cardKid != null;
+const id = Number(Astro.params.id);
+if (!Number.isInteger(id)) return Astro.redirect('/', 302);
+
+let error: string | null = null;
+const back = (m: string) => Astro.redirect(`/kid/${id}?done=${m}`, 303);
+
+if (Astro.request.method === 'POST') {
+  // Never request.formData() unguarded: a malformed body rejects, and an
+  // unhandled rejection in frontmatter is a 500.
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  /* THE CHECK. Read from the signed cookie by the middleware on every
+   * request — a child who finds the form can post to it. */
+  if (!leader) {
+    error = 'Only a leader can change bucks.';
+  } else if (act === 'undo') {
+    const entryId = Number(form.get('entryId') ?? 0);
+    const [entry] = await db.select().from(schema.ledger)
+      .where(and(eq(schema.ledger.id, entryId), eq(schema.ledger.kidId, id))).limit(1);
+    /* Scoped to THIS child as well as the id, so an entry belonging to
+     * somebody else cannot be undone from here by editing a form value. */
+    if (entry) {
+      await db.insert(schema.ledger).values({
+        kidId: id, delta: -entry.delta, reason: 'correction',
+        note: `Undid: ${REASON_LABEL[entry.reason] ?? entry.reason}`
+            + (entry.note ? ` — ${entry.note}` : ''),
+        leaderId: leader.id, createdAt: nowIso(),
+      });
+    }
+    return back('undone');
+  } else {
+    const amount = parseAmount(String(form.get('amount') ?? ''));
+    const dir = String(form.get('dir') ?? 'give');
+    if (amount === null) error = `Pick a whole number between 1 and ${MAX_AMOUNT}.`;
+    else {
+      // The SIGN comes from the button, never from what was typed —
+      // parseAmount refuses a minus, so "-5" cannot become an award.
+      await db.insert(schema.ledger).values({
+        kidId: id,
+        delta: dir === 'take' ? -amount : amount,
+        reason: dir === 'take' ? 'spend' : 'award',
+        note: String(form.get('note') ?? '').trim() || null,
+        leaderId: leader.id, createdAt: nowIso(),
+      });
+      return back(dir === 'take' ? 'spend' : 'award');
+    }
+  }
+}
+
+const kid = await getKid(env, id);
+if (!kid) return Astro.redirect('/', 302);
+
+const balance = await balanceOfKid(env, id);
+const before = Number(Astro.url.searchParams.get('before') ?? 0) || null;
+const { rows, more } = await historyPage(env, id, before);
+
+const colour = kid.groupColour ?? UNGROUPED_COLOUR;
+const done = Astro.url.searchParams.get('done');
+const DONE: Record<string, string> = { award: 'Added.', spend: 'Taken off.', undone: 'Put back.' };
+const when = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+---
+<Shell title={kid.name} cardOnly={cardOnly} back={cardOnly ? undefined : (kid.groupId ? `/group/${kid.groupId}` : '/group/none')}>
+  {!kid.active && (
+    <div class="card notice" style="margin-bottom:14px;">
+      <strong>{kid.name} is archived.</strong>
+      <span class="muted"> Their history is all still here.</span>
+    </div>
+  )}
+  {error && <div class="card notice" style="margin-bottom:14px;"><strong>{error}</strong></div>}
+  {!error && done && DONE[done] && <div class="card ok" style="margin-bottom:14px;">{DONE[done]}</div>}
+
+  <div class="hero" style={tintStyle(colour)}>
+    <p class="hero__name">{kid.name}</p>
+    <span class="hero__n">{balance}</span>
+    <span class="hero__unit">bucks</span>
+  </div>
+  <p class="muted" style="text-align:center; margin:10px 0 0;">
+    {kid.groupName ?? 'No class yet'}
+    {encouragement(balance) && <> · {encouragement(balance)}</>}
+  </p>
+
+  {leader ? (
+    <>
+      {/* Two forms, not one. A button can only submit a single name/value
+          pair, and it is already carrying the amount — so the direction has
+          to come from the form around it. Doing this with one form and a
+          formaction query string silently awarded on every "take off",
+          because the handler reads dir from the BODY. */}
+      <form method="POST">
+        <input type="hidden" name="dir" value="give" />
+        <div class="grid3">
+          {PRESETS.map((n) => (
+            <button class="btn btn--give" name="amount" value={n} type="submit"
+                    aria-label={`Give ${n}`}>+{n}</button>
+          ))}
+        </div>
+      </form>
+      <form method="POST">
+        <input type="hidden" name="dir" value="take" />
+        <div class="grid3">
+          {PRESETS.map((n) => (
+            <button class="btn btn--take" name="amount" value={n} type="submit"
+                    aria-label={`Take off ${n}`}>−{n}</button>
+          ))}
+        </div>
+      </form>
+
+      <details class="card" style="margin-top:14px;">
+        <summary style="cursor:pointer; font-weight:700; min-height:32px;">Another amount, or say what for</summary>
+        <form method="POST" class="actions" style="margin-top:12px;">
+          <input name="amount" type="number" min="1" max={MAX_AMOUNT} placeholder="20" required
+                 aria-label="How many" style="width:110px;" />
+          <input name="note" type="text" placeholder="What for?" autocomplete="off"
+                 style="flex:1; min-width:140px;" />
+          <button class="go" name="dir" value="give" type="submit">Give</button>
+          <button class="go go--quiet" name="dir" value="take" type="submit">Take off</button>
+        </form>
+      </details>
+    </>
+  ) : (
+    <p class="muted" style="text-align:center; margin:16px 0 0;">
+      This is your card. A leader can add or take away.
+    </p>
+  )}
+
+  <h2 style="margin:26px 0 8px;">Where it came from</h2>
+  {/* The date and the undo stack on the right rather than competing with the
+      text for a phone's width — a long note plus a leader's name was being
+      squeezed into about forty pixels. */}
+  <div class="card">
+    {rows.map((e) => (
+      <div class="entry">
+        <span class:list={['entry__d', e.delta > 0 ? 'up' : 'down']}>
+          {e.delta > 0 ? `+${e.delta}` : e.delta}
+        </span>
+        <span class="entry__w">
+          <span class="entry__what">{REASON_LABEL[e.reason] ?? e.reason}</span>
+          {e.note && <span class="entry__note">{e.note}</span>}
+          {e.leaderName && <span class="entry__by">{e.leaderName}</span>}
+        </span>
+        <span class="entry__side">
+          <span class="entry__t">{when(e.createdAt)}</span>
+          {leader && (
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="action" value="undo" />
+              <input type="hidden" name="entryId" value={e.id} />
+              <button type="submit" title="Undo this" class="go go--quiet"
+                      style="min-height:34px; padding:4px 12px; font-size:13px;">undo</button>
+            </form>
+          )}
+        </span>
+      </div>
+    ))}
+    {rows.length === 0 && <p class="empty" style="margin:0;">Nothing yet.</p>}
+  </div>
+
+  {/* Keyset paging: the next page starts BELOW the last id shown, so page
+      twenty costs the same as page one. */}
+  {more && (
+    <p style="margin-top:14px;">
+      <a href={`/kid/${id}?before=${rows[rows.length - 1].id}`}>Older ({PAGE} more) →</a>
+    </p>
+  )}
+  {before && <p style="margin-top:8px;"><a href={`/kid/${id}`}>← Back to the newest</a></p>}
+</Shell>

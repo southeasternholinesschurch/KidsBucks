@@ -1,0 +1,173 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { and, eq, desc } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { kidsInGroup, batchSummary } from '../../lib/query';
+import { parseAmount, newBatchId, MAX_AMOUNT, PRESETS } from '../../lib/bucks';
+import { tintStyle } from '../../lib/colour';
+import { chunkRows } from '../../lib/chunk';
+import { UNGROUPED_COLOUR } from '../../lib/palette';
+
+/**
+ * A class: the screen a leader actually works from.
+ *
+ * Bounded by what a class is — twenty-odd children — so it stays the same
+ * size however big the ministry gets.
+ *
+ * THE BULK AWARD IS THE POINT OF THIS PAGE. "Everyone here gets five for
+ * turning up" is the commonest thing anybody does with a points system, and
+ * doing it one child at a time is twenty-five taps and a mistake.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+const leader = Astro.locals.leader!;
+const raw = String(Astro.params.id ?? '');
+const groupId = raw === 'none' ? null : Number(raw);
+if (raw !== 'none' && !Number.isInteger(groupId)) return Astro.redirect('/', 302);
+
+let error: string | null = null;
+const back = (m: string) => Astro.redirect(`/group/${raw}?done=${m}`, 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  if (act === 'bulk') {
+    const amount = parseAmount(String(form.get('amount') ?? ''));
+    const dir = String(form.get('dir') ?? 'give');
+    const note = String(form.get('note') ?? '').trim() || null;
+    const kids = await kidsInGroup(env, groupId);
+
+    if (amount === null) error = `Pick a whole number between 1 and ${MAX_AMOUNT}.`;
+    else if (kids.length === 0) error = 'Nobody in this class yet.';
+    else {
+      /*
+       * ONE ROW PER CHILD, sharing a batch id.
+       *
+       * The ledger stays per-child — that is the whole point of it, and a
+       * child asking "where did mine come from" has to be answerable — but
+       * the batch ties them together so the whole award can be undone in one
+       * go when somebody picks the wrong class, which happens.
+       *
+       * Inserted in as few statements as D1 allows rather than one per child:
+       * twenty-five round trips is a visible pause on a phone. Chunked
+       * because D1 caps BOUND PARAMETERS at 100 per statement, and a class of
+       * twenty-four at seven columns is 168 — see lib/chunk.ts.
+       */
+      const batch = newBatchId();
+      const at = nowIso();
+      const rows = kids.map((k) => ({
+        kidId: k.id,
+        delta: dir === 'take' ? -amount : amount,
+        reason: (dir === 'take' ? 'spend' : 'award') as 'spend' | 'award',
+        note, leaderId: leader.id, batch, createdAt: at,
+      }));
+      for (const part of chunkRows(rows)) await db.insert(schema.ledger).values(part);
+      return back(`bulk:${batch}`);
+    }
+  }
+
+  if (act === 'undo-batch') {
+    const batch = String(form.get('batch') ?? '');
+    const rows = await db.select().from(schema.ledger)
+      .where(eq(schema.ledger.batch, batch));
+    if (rows.length) {
+      /* Undo writes OPPOSITE ROWS, never deletes. Both the mistake and the
+       * fix stay visible, which is what lets a child be shown why their
+       * total moved. */
+      const at = nowIso();
+      const undo = rows.map((r) => ({
+        kidId: r.kidId, delta: -r.delta, reason: 'correction' as const,
+        note: `Undid class award${r.note ? ` — ${r.note}` : ''}`,
+        leaderId: leader.id, batch: `${batch}:undo`, createdAt: at,
+      }));
+      for (const part of chunkRows(undo)) await db.insert(schema.ledger).values(part);
+    }
+    return back('undone');
+  }
+}
+
+const [group] = groupId === null ? [null] : await db.select().from(schema.groups)
+  .where(eq(schema.groups.id, groupId)).limit(1);
+if (groupId !== null && !group) return Astro.redirect('/', 302);
+
+const kids = await kidsInGroup(env, groupId);
+const colour = group?.colour ?? UNGROUPED_COLOUR;
+const title = group?.name ?? 'No class yet';
+const total = kids.reduce((n, k) => n + k.balance, 0);
+
+const done = Astro.url.searchParams.get('done') ?? '';
+const bulkBatch = done.startsWith('bulk:') ? done.slice(5) : null;
+const summary = bulkBatch ? await batchSummary(env, bulkBatch) : null;
+---
+<Shell title={title} back="/">
+  <h1>{title}</h1>
+  <p class="muted" style="margin:0 0 16px;">
+    {kids.length} {kids.length === 1 ? 'child' : 'children'} · {total} bucks
+  </p>
+
+  {error && <div class="card notice" style="margin-bottom:14px;"><strong>{error}</strong></div>}
+  {!error && summary && (
+    <div class="card ok" style="margin-bottom:14px;">
+      <div class="actions">
+        <span>
+          <strong>{summary.total > 0 ? '+' : ''}{summary.total / Math.max(1, summary.count)} each</strong>
+          <span class="muted"> to {summary.count} {summary.count === 1 ? 'child' : 'children'}.</span>
+        </span>
+        <form method="POST" style="margin-left:auto;">
+          <input type="hidden" name="action" value="undo-batch" />
+          <input type="hidden" name="batch" value={bulkBatch} />
+          <button class="go go--quiet" type="submit">Undo that</button>
+        </form>
+      </div>
+    </div>
+  )}
+  {!error && done === 'undone' && (
+    <div class="card ok" style="margin-bottom:14px;">Put back.</div>
+  )}
+
+  {kids.length > 0 && (
+    <div class="card" style="margin-bottom:14px;">
+      <h2>Everyone here</h2>
+      {/* TWO FORMS, deliberately.
+          A hidden dir=give and a <button name="dir" value="take"> in the same
+          form both get submitted, and formData.get() returns whichever comes
+          first in the DOM — so "Take off" would quietly award. The presets
+          carry the amount and therefore need the direction on the form; the
+          custom row carries the direction on its buttons and must not have a
+          hidden one to lose to. */}
+      <form method="POST">
+        <input type="hidden" name="action" value="bulk" />
+        <input type="hidden" name="dir" value="give" />
+        <div class="grid3">
+          {PRESETS.map((n) => (
+            <button class="btn btn--give" name="amount" value={n} type="submit"
+                    aria-label={`Give everyone ${n}`}>+{n}</button>
+          ))}
+        </div>
+      </form>
+      <form method="POST" class="actions" style="margin-top:12px;">
+        <input type="hidden" name="action" value="bulk" />
+        <input name="amount" type="number" min="1" max={MAX_AMOUNT} placeholder="Other"
+               aria-label="How many" style="width:110px;" />
+        <input name="note" type="text" placeholder="What for? (optional)" autocomplete="off"
+               style="flex:1; min-width:150px;" />
+        <button class="go" name="dir" value="give" type="submit">Give all</button>
+        <button class="go go--quiet" name="dir" value="take" type="submit">Take off</button>
+      </form>
+    </div>
+  )}
+
+  <div class="card">
+    {kids.map((k) => (
+      <a class="row" href={`/kid/${k.id}`}>
+        <span class="chip" style={`${tintStyle(colour)} background:var(--lo); color:#0d1017; border:0; font-weight:900;`}>
+          {k.name.trim().charAt(0).toUpperCase()}
+        </span>
+        <span class="row__main"><span class="row__name">{k.name}</span></span>
+        <span class="row__n">{k.balance}</span>
+      </a>
+    ))}
+    {kids.length === 0 && <p class="empty" style="margin:0;">Nobody in this class yet.</p>}
+  </div>
+</Shell>

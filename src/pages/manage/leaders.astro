@@ -1,0 +1,161 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { eq } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { allLeaders } from '../../lib/query';
+import { isValidLeaderPin } from '../../lib/auth';
+import { hashPin } from '../../lib/pin';
+
+/**
+ * The volunteers.
+ *
+ * Deactivated, never deleted: their name is on ledger entries going back
+ * years, and the entries have to keep saying who made them.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+const me = Astro.locals.leader!;
+let error: string | null = null;
+const back = (m: string) => Astro.redirect(`/manage/leaders?done=${m}`, 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  if (act === 'add') {
+    const name = String(form.get('name') ?? '').trim();
+    const pin = String(form.get('pin') ?? '').trim();
+    const role = String(form.get('role') ?? 'leader') === 'admin' ? 'admin' : 'leader';
+    const existing = await db.select().from(schema.leaders);
+    if (!name) error = 'Give them a name.';
+    else if (!isValidLeaderPin(pin)) error = 'A PIN is 6 to 12 digits.';
+    else if (existing.some((l) => l.name.toLowerCase() === name.toLowerCase()))
+      error = `There is already a leader called ${name}.`;
+    else {
+      await db.insert(schema.leaders).values({
+        name, pinHash: await hashPin(pin), role, active: 1, failCount: 0, createdAt: nowIso(),
+      });
+      return back('added');
+    }
+  }
+
+  if (act === 'reset') {
+    const id = Number(form.get('id') ?? 0);
+    const pin = String(form.get('pin') ?? '').trim();
+    if (!isValidLeaderPin(pin)) error = 'A PIN is 6 to 12 digits.';
+    else {
+      // Resetting also clears any lockout — that is usually WHY it is being
+      // reset, and leaving them locked out would be a puzzle.
+      await db.update(schema.leaders)
+        .set({ pinHash: await hashPin(pin), failCount: 0, lockedUntil: null })
+        .where(eq(schema.leaders.id, id));
+      return back('reset');
+    }
+  }
+
+  if (act === 'active') {
+    const id = Number(form.get('id') ?? 0);
+    const active = String(form.get('active') ?? '') === '1' ? 1 : 0;
+    const admins = (await db.select().from(schema.leaders)).filter((l) => l.active && l.role === 'admin');
+    /* Refuse to remove the last admin. Otherwise the ministry locks itself
+     * out of its own system and the only way back is the database. */
+    if (!active && admins.length === 1 && admins[0].id === id) {
+      error = 'That is the only admin left. Make somebody else an admin first.';
+    } else {
+      await db.update(schema.leaders).set({ active }).where(eq(schema.leaders.id, id));
+      return back(active ? 'shown' : 'hidden');
+    }
+  }
+
+  if (act === 'role') {
+    const id = Number(form.get('id') ?? 0);
+    const role = String(form.get('role') ?? 'leader') === 'admin' ? 'admin' : 'leader';
+    const admins = (await db.select().from(schema.leaders)).filter((l) => l.active && l.role === 'admin');
+    if (role === 'leader' && admins.length === 1 && admins[0].id === id) {
+      error = 'That is the only admin left. Promote somebody else first.';
+    } else {
+      await db.update(schema.leaders).set({ role }).where(eq(schema.leaders.id, id));
+      return back('role');
+    }
+  }
+}
+
+const leaders = await allLeaders(env, true);
+const done = Astro.url.searchParams.get('done');
+const DONE: Record<string, string> = {
+  added: 'Leader added.', reset: 'PIN reset, and any lockout cleared.',
+  hidden: 'Removed. Their past entries still say their name.',
+  shown: 'Back in.', role: 'Changed.',
+};
+---
+<Shell title="Leaders" back="/manage">
+  <h1>Leaders</h1>
+  {error && <div class="card notice" style="margin:14px 0;"><strong>{error}</strong></div>}
+  {!error && done && DONE[done] && <div class="card ok" style="margin:14px 0;">{DONE[done]}</div>}
+
+  <div class="card">
+    {leaders.map((l) => (
+      <div class="row">
+        <span class="row__main">
+          <span class="row__name">{l.name} {l.id === me.id && <span class="chip">you</span>}</span>
+          <span class="row__sub">
+            {l.role === 'admin' ? 'Admin' : 'Leader'}{!l.active && ' · removed'}
+          </span>
+        </span>
+        <span class="actions">
+          {l.active && (
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="action" value="role" />
+              <input type="hidden" name="id" value={l.id} />
+              <input type="hidden" name="role" value={l.role === 'admin' ? 'leader' : 'admin'} />
+              <button class="go go--quiet" type="submit" style="min-height:38px; padding:6px 10px; font-size:13px;">
+                {l.role === 'admin' ? 'Make leader' : 'Make admin'}</button>
+            </form>
+          )}
+          <form method="POST" style="margin:0;">
+            <input type="hidden" name="action" value="active" />
+            <input type="hidden" name="id" value={l.id} />
+            <input type="hidden" name="active" value={l.active ? '0' : '1'} />
+            <button class="go go--quiet" type="submit" style="min-height:38px; padding:6px 10px; font-size:13px;">
+              {l.active ? 'Remove' : 'Restore'}</button>
+          </form>
+        </span>
+      </div>
+    ))}
+  </div>
+
+  <div class="card">
+    <h2>Add a leader</h2>
+    <form method="POST">
+      <input type="hidden" name="action" value="add" />
+      <label class="field"><span>Name</span>
+        <input name="name" type="text" required autocomplete="off" /></label>
+      <label class="field"><span>Their PIN — 6 to 12 digits</span>
+        <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" required
+               autocomplete="off" placeholder="482100" /></label>
+      <label class="field"><span>Can they manage?</span>
+        <select name="role">
+          <option value="leader">Leader — award points only</option>
+          <option value="admin">Admin — everything</option>
+        </select></label>
+      <button class="go" type="submit">Add</button>
+    </form>
+    <p class="muted" style="margin:12px 0 0; font-size:14px;">
+      Tell them their PIN in person and have them change it later. You can
+      reset it here if they forget.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Reset a PIN</h2>
+    <form method="POST" class="actions">
+      <input type="hidden" name="action" value="reset" />
+      <select name="id" style="flex:1; min-width:140px;">
+        {leaders.filter((l) => l.active).map((l) => <option value={l.id}>{l.name}</option>)}
+      </select>
+      <input name="pin" type="text" inputmode="numeric" pattern="[0-9]*" required
+             autocomplete="off" placeholder="New PIN" style="width:140px;" />
+      <button class="go go--quiet" type="submit">Reset</button>
+    </form>
+  </div>
+</Shell>

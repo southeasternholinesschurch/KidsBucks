@@ -1,0 +1,53 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { getDb, schema, nowIso } from '../../db';
+import { and, eq, isNull } from 'drizzle-orm';
+import { isCardCode, normaliseCode } from '../../lib/cards';
+import { grantCard } from '../../lib/auth';
+
+/**
+ * Scanning a card.
+ *
+ * Public, because the whole point is a child reaching their own total without
+ * a PIN. What it grants is small and fixed: read access to ONE child's page.
+ * No buttons, no roster, no other child — the middleware enforces that in
+ * front of every page rather than trusting each one to remember.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+const raw = String(Astro.params.code ?? '');
+
+/* Checked for shape before the database is touched, so somebody walking URLs
+ * costs a redirect rather than a query. */
+if (isCardCode(raw)) {
+  const code = normaliseCode(raw);
+  const [card] = await db.select({ id: schema.cards.id, kidId: schema.cards.kidId })
+    .from(schema.cards)
+    .where(and(eq(schema.cards.code, code), isNull(schema.cards.revokedAt)))
+    .limit(1);
+  if (card) {
+    // So a leader can tell a card in weekly use from one lost in March.
+    await db.update(schema.cards).set({ lastUsedAt: nowIso() })
+      .where(eq(schema.cards.id, card.id));
+    // The CARD's id, not the child's, so revoking it later cuts off this
+    // browser as well as the next one.
+    await grantCard(env, Astro.cookies, card.id, Astro.url.protocol === 'https:');
+    return Astro.redirect(`/kid/${card.kidId}`, 303);
+  }
+}
+
+/* One message for every failure. "That code was revoked" and "no such code"
+ * are two different answers, and the pair of them turns guessing into a
+ * search. */
+---
+<Shell title="Card" bare>
+  <div style="max-width:380px; margin:10vh auto 0; text-align:center;">
+    <h1>KidsBucks</h1>
+    <div class="card notice" style="margin-top:20px; text-align:left;">
+      <strong>That card isn't working.</strong>
+      <p class="muted" style="margin:8px 0 0;">
+        It might have been replaced. Ask a leader for a new one.
+      </p>
+    </div>
+  </div>
+</Shell>

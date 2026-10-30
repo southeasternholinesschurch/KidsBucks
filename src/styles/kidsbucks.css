@@ -1,0 +1,178 @@
+/*
+ * KidsBucks.
+ *
+ * Used standing up, in a loud room, on a phone held in one hand — and on a
+ * kiosk tablet a seven-year-old taps with a whole palm. So: big targets, big
+ * numbers, and nothing that needs aiming.
+ *
+ * Every colour here is measured against the ground at 4.5:1 or better; the
+ * lowest is the violet group tile at 6.6:1.
+ */
+:root {
+  --ground:   #0d1017;
+  --surface:  rgba(255, 255, 255, 0.055);
+  --surface-2:rgba(255, 255, 255, 0.10);
+  --line:     rgba(255, 255, 255, 0.14);
+  --ink:      #ffffff;
+  --muted:    #a2a9bb;
+  --accent:   #4f46e5;
+  --good:     #3ee6a8;
+  --bad:      #ff7b6b;
+  --warn:     #ffc247;
+  --radius:   16px;
+  /* One place for the minimum tap target, so nothing drifts under it. */
+  --tap:      48px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { background: var(--ground); }
+body {
+  margin: 0; min-height: 100dvh; background: var(--ground); color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+a { color: inherit; }
+.wrap { max-width: 760px; margin-inline: auto; padding: 0 16px 64px; }
+.muted { color: var(--muted); }
+h1 { font-size: clamp(26px, 6vw, 34px); margin: 0 0 4px; letter-spacing: -0.02em; }
+h2 { font-size: 19px; margin: 0 0 10px; }
+
+/* ---- bar ---- */
+.bar { display: flex; align-items: center; gap: 10px; max-width: 760px;
+       margin-inline: auto; padding: 12px 16px; }
+.bar__brand { font-weight: 800; font-size: 18px; text-decoration: none; letter-spacing: -0.01em; }
+.bar__back { min-width: var(--tap); min-height: var(--tap); display: inline-flex;
+             align-items: center; text-decoration: none; font-size: 22px; margin-left: -10px; }
+.bar__dot { width: 1px; }
+.bar__spacer { margin-left: auto; }
+.bar a.bar__link { font-size: 15px; color: var(--muted); text-decoration: none;
+                   min-height: var(--tap); display: inline-flex; align-items: center; padding: 0 6px; }
+.bar a.bar__link:hover { color: var(--ink); }
+
+/* ---- cards and tiles ---- */
+.card { background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 18px; }
+.card + .card { margin-top: 14px; }
+
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(152px, 1fr)); }
+.tile {
+  display: block; text-decoration: none; border-radius: var(--radius);
+  padding: 18px 16px; position: relative; overflow: hidden; color: #0d1017;
+  background: linear-gradient(150deg, var(--hi), var(--lo));
+  box-shadow: 0 12px 28px -12px var(--glow);
+  min-height: 112px;
+}
+.tile::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+               background: linear-gradient(150deg, rgba(255,255,255,.26), transparent 46%); }
+.tile__name { font-size: 18px; font-weight: 800; margin: 0 0 6px; }
+.tile__n { font-size: clamp(28px, 7vw, 38px); font-weight: 900; line-height: 1; letter-spacing: -0.03em; }
+.tile__sub { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; opacity: .78; }
+
+/* ---- rows ---- */
+.row { display: flex; align-items: center; gap: 12px; padding: 4px 0;
+       text-decoration: none; min-height: var(--tap); }
+.row + .row { border-top: 1px solid var(--line); }
+.row__main { flex: 1; min-width: 0; padding: 10px 0; }
+.row__name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.row__sub { display: block; font-size: 13px; color: var(--muted); }
+.row__n { font-weight: 900; font-size: 20px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px;
+        font-weight: 700; border: 1px solid var(--line); color: var(--muted); }
+
+/* ---- the big number on a child's page ---- */
+.hero { border-radius: var(--radius); padding: 24px 20px; text-align: center; color: #0d1017;
+        background: linear-gradient(150deg, var(--hi), var(--lo)); position: relative; overflow: hidden;
+        box-shadow: 0 16px 36px -14px var(--glow); }
+.hero::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+               background: linear-gradient(150deg, rgba(255,255,255,.24), transparent 44%); }
+.hero__name { margin: 0 0 6px; font-size: 21px; font-weight: 800; }
+.hero__n { font-size: clamp(56px, 17vw, 92px); font-weight: 900; line-height: 1;
+           letter-spacing: -0.04em; display: block; font-variant-numeric: tabular-nums; }
+.hero__unit { font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; opacity: .8; }
+
+/* ---- buttons ---- */
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.btn { width: 100%; font: inherit; font-size: 24px; font-weight: 900; padding: 18px 0;
+       border: 0; border-radius: 14px; cursor: pointer; min-height: var(--tap);
+       transition: transform 120ms cubic-bezier(.2,.9,.3,1); }
+.btn--give { background: var(--good); color: #0d1017; }
+.btn--take { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+.btn:active { transform: scale(.96); }
+.btn:disabled { opacity: .5; }
+.go { font: inherit; font-size: 16px; font-weight: 800; padding: 13px 20px; border: 0;
+      border-radius: 12px; background: var(--accent); color: #fff; cursor: pointer;
+      min-height: var(--tap); }
+.go--quiet { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+.go--danger { background: transparent; color: var(--bad); border: 1px solid var(--line); }
+.go:disabled { opacity: .5; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---- forms ---- */
+.field { display: block; margin-bottom: 14px; }
+.field > span { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 800;
+                letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+input[type="text"], input[type="password"], input[type="number"], input[type="tel"],
+input[type="search"], select, textarea {
+  width: 100%; padding: 12px 13px; font: inherit; font-size: 16px; /* 16px stops iOS zooming */
+  color: var(--ink); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 12px; min-height: var(--tap);
+}
+textarea { min-height: 190px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+input::placeholder, textarea::placeholder { color: rgba(255,255,255,.42); }
+:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; }
+
+/* ---- history ----
+ * Three columns: the amount, what it was for, and a right-hand stack holding
+ * the date above the undo. Letting the date and the button sit in the main
+ * row crushed a long note into a few characters on a phone.
+ */
+.entry { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; }
+.entry + .entry { border-top: 1px solid var(--line); }
+.entry__d { flex: 0 0 52px; font-weight: 900; font-size: 18px;
+            font-variant-numeric: tabular-nums; padding-top: 1px; }
+.entry__d.up { color: var(--good); }
+.entry__d.down { color: var(--bad); }
+.entry__w { flex: 1; min-width: 0; }
+.entry__what { display: block; font-weight: 600; }
+.entry__note { display: block; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+.entry__by { display: block; font-size: 13px; color: var(--muted); }
+.entry__side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.entry__t { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+.notice { border-left: 4px solid var(--bad); }
+.ok { border-left: 4px solid var(--good); }
+.empty { color: var(--muted); padding: 10px 0 2px; }
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; }
+
+/* ---- printable card sheet ---- */
+.sheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.pcard { border: 1px dashed rgba(0,0,0,.35); border-radius: 10px; padding: 12px;
+         background: #fff; color: #111; break-inside: avoid; }
+.pcard__name { font-weight: 800; font-size: 17px; margin: 0 0 2px; }
+.pcard__group { font-size: 12px; color: #555; margin: 0 0 8px; }
+.pcard__code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+               font-size: 16px; letter-spacing: .08em; font-weight: 700; }
+.pcard__url { font-size: 10px; color: #555; word-break: break-all; margin-top: 4px; }
+@media print {
+  /* The sheet is the only thing that should reach paper. */
+  body { background: #fff; color: #000; padding: 0; }
+  .bar, .noprint { display: none !important; }
+  .wrap { max-width: none; padding: 0; }
+  .sheet { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .pcard { border-color: #999; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  .btn:active { transform: none; }
+}
+
+/* A class tile leads with its name: the thing a leader is looking for, at the
+ * size they can hit while holding a toddler. */
+.tile--name { display: flex; flex-direction: column; justify-content: center; min-height: 104px; }
+.tile__big { font-size: clamp(20px, 5.2vw, 26px); font-weight: 900; margin: 0 0 6px;
+             letter-spacing: -0.02em; line-height: 1.1; }

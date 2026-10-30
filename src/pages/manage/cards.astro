@@ -1,0 +1,148 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { and, eq, isNull, inArray } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { allGroups, kidsInGroup } from '../../lib/query';
+import { newCardCode, formatCode } from '../../lib/cards';
+
+/**
+ * Cards, by the class rather than one at a time.
+ *
+ * Issuing two hundred cards individually is the kind of job that stops a
+ * system being adopted, so this makes them for everyone in a class who does
+ * not already have one, and prints them three to a row on plain paper.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+let error: string | null = null;
+let made = 0;
+
+const groups = await allGroups(env);
+const gRaw = Astro.url.searchParams.get('group');
+const groupId = gRaw === 'none' ? null : gRaw ? Number(gRaw) : undefined;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  if (act === 'issue') {
+    const gid = String(form.get('group') ?? '');
+    const target = gid === 'none' ? null : Number(gid);
+    const kids = await kidsInGroup(env, target);
+    if (kids.length === 0) error = 'Nobody in that class yet.';
+    else {
+      const ids = kids.map((k) => k.id);
+      const have = new Set((await db.select({ kidId: schema.cards.kidId }).from(schema.cards)
+        .where(and(inArray(schema.cards.kidId, ids), isNull(schema.cards.revokedAt))))
+        .map((r) => r.kidId));
+      const at = nowIso();
+      for (const k of kids) {
+        if (have.has(k.id)) continue;
+        /* Retry on the unique index. A collision between two 60-bit codes is
+         * not going to happen, but "not going to happen" and "handled" are
+         * different things, and the handling is four lines. */
+        for (let i = 0; i < 5; i++) {
+          try {
+            await db.insert(schema.cards).values({
+              kidId: k.id, code: newCardCode(), label: null, createdAt: at,
+            });
+            made++; break;
+          } catch { /* taken; draw another */ }
+        }
+      }
+      return Astro.redirect(`/manage/cards?group=${gid}&made=${made}`, 303);
+    }
+  }
+
+  if (act === 'revoke') {
+    const id = Number(form.get('id') ?? 0);
+    await db.update(schema.cards).set({ revokedAt: nowIso() }).where(eq(schema.cards.id, id));
+    return Astro.redirect(`/manage/cards?group=${gRaw ?? ''}&done=revoked`, 303);
+  }
+}
+
+type Row = { cardId: number; code: string; name: string; groupName: string | null };
+let rows: Row[] = [];
+if (groupId !== undefined) {
+  const kids = await kidsInGroup(env, groupId);
+  const ids = kids.map((k) => k.id);
+  const byId = new Map(kids.map((k) => [k.id, k.name]));
+  const gName = groupId === null ? null : groups.find((g) => g.id === groupId)?.name ?? null;
+  if (ids.length) {
+    const cards = await db.select().from(schema.cards)
+      .where(and(inArray(schema.cards.kidId, ids), isNull(schema.cards.revokedAt)));
+    rows = cards.map((c) => ({
+      cardId: c.id, code: c.code, name: byId.get(c.kidId) ?? '—', groupName: gName,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+}
+const origin = Astro.url.origin;
+const justMade = Number(Astro.url.searchParams.get('made') ?? 0);
+const done = Astro.url.searchParams.get('done');
+---
+<Shell title="Cards" back="/manage">
+  <div class="noprint">
+    <h1>Cards</h1>
+    {error && <div class="card notice" style="margin:14px 0;"><strong>{error}</strong></div>}
+    {justMade > 0 && (
+      <div class="card ok" style="margin:14px 0;">
+        Made {justMade} new {justMade === 1 ? 'card' : 'cards'}. Print the sheet below.
+      </div>
+    )}
+    {justMade === 0 && Astro.url.searchParams.has('made') && (
+      <div class="card ok" style="margin:14px 0;">Everyone in that class already had a card.</div>
+    )}
+    {done === 'revoked' && <div class="card ok" style="margin:14px 0;">Card revoked.</div>}
+
+    <div class="card">
+      <h2>Make cards for a class</h2>
+      <form method="POST" class="actions">
+        <input type="hidden" name="action" value="issue" />
+        <select name="group" style="flex:1; min-width:150px;">
+          {groups.map((g) => <option value={g.id} selected={gRaw === String(g.id)}>{g.name}</option>)}
+          <option value="none" selected={gRaw === 'none'}>No class yet</option>
+        </select>
+        <button class="go" type="submit">Make the missing ones</button>
+      </form>
+      <p class="muted" style="margin:12px 0 0; font-size:14px;">
+        Only children without an active card get one, so this is safe to press
+        twice.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Show a class's cards</h2>
+      <form method="GET" class="actions">
+        <select name="group" style="flex:1; min-width:150px;">
+          <option value="">Pick a class…</option>
+          {groups.map((g) => <option value={g.id} selected={gRaw === String(g.id)}>{g.name}</option>)}
+          <option value="none" selected={gRaw === 'none'}>No class yet</option>
+        </select>
+        <button class="go go--quiet" type="submit">Show</button>
+      </form>
+    </div>
+
+    {rows.length > 0 && (
+      <p style="margin:18px 0 10px;">
+        <button class="go" type="button" onclick="window.print()">Print these {rows.length} cards</button>
+      </p>
+    )}
+  </div>
+
+  {rows.length > 0 && (
+    <div class="sheet">
+      {rows.map((r) => (
+        <div class="pcard">
+          <p class="pcard__name">{r.name}</p>
+          <p class="pcard__group">{r.groupName ?? 'No class'}</p>
+          <p class="pcard__code" style="margin:0;">{formatCode(r.code)}</p>
+          <p class="pcard__url">{origin}/c/{r.code}</p>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {groupId !== undefined && rows.length === 0 && (
+    <div class="card noprint"><p class="muted" style="margin:0;">No active cards in that class yet.</p></div>
+  )}
+</Shell>

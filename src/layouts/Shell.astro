@@ -1,0 +1,38 @@
+---
+import '../styles/kidsbucks.css';
+interface Props { title: string; bare?: boolean; cardOnly?: boolean; back?: string }
+const { title, bare = false, cardOnly = false, back } = Astro.props;
+const leader = Astro.locals.leader;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title} · KidsBucks</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0d1017" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="KidsBucks" />
+  </head>
+  <body>
+    {!bare && (
+      <header class="bar">
+        {back
+          ? <a href={back} class="bar__back" aria-label="Back">←</a>
+          : <span class="bar__dot" aria-hidden="true"></span>}
+        <a href="/" class="bar__brand">KidsBucks</a>
+        <span class="bar__spacer"></span>
+        {!cardOnly && leader && (
+          <>
+            <a href="/find" class="bar__link">Find</a>
+            {leader.role === 'admin' && <a href="/manage" class="bar__link">Manage</a>}
+            <a href="/leave" class="bar__link">{leader.name.split(' ')[0]} ·&nbsp;Out</a>
+          </>
+        )}
+        {cardOnly && <a href="/leave" class="bar__link">Done</a>}
+      </header>
+    )}
+    <main class="wrap"><slot /></main>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kidsbucks",
+  "main": "dist/_worker.js/index.js",
+  "compatibility_date": "2026-08-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "dist", "binding": "ASSETS" },
+
+  // Replace with the id from `npx wrangler d1 create kidsbucks`.
+  // The binding MUST stay "DB" — every query reads env.DB.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "kidsbucks", "database_id": "PASTE_DATABASE_ID_HERE" }
+  ],
+
+  "observability": { "enabled": true },
+  "workers_dev": true
+}

@@ -1,0 +1,142 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { asc, eq } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../../db';
+import { allGroups } from '../../lib/query';
+import { colourForIndex, GROUP_PALETTE } from '../../lib/palette';
+import { parseHex, tintStyle } from '../../lib/colour';
+
+/** Classes: add, rename, recolour, reorder, archive. */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+let error: string | null = null;
+const back = (m: string) => Astro.redirect(`/manage/groups?done=${m}`, 303);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const act = String(form.get('action') ?? '');
+
+  if (act === 'add') {
+    const name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
+    const existing = await db.select().from(schema.groups);
+    if (!name) error = 'Give the class a name.';
+    else if (existing.some((g) => g.name.toLowerCase() === name.toLowerCase()))
+      error = `There is already a class called ${name}.`;
+    else {
+      await db.insert(schema.groups).values({
+        name, colour: colourForIndex(existing.length),
+        sort: (existing.length + 1) * 10, active: 1, createdAt: nowIso(),
+      });
+      return back('added');
+    }
+  }
+
+  if (act === 'edit') {
+    const id = Number(form.get('id') ?? 0);
+    const name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
+    const colour = String(form.get('colour') ?? '').trim();
+    const others = (await db.select().from(schema.groups)).filter((g) => g.id !== id);
+    if (!name) error = 'A class needs a name.';
+    else if (!parseHex(colour)) error = 'That is not a valid colour.';
+    else if (others.some((g) => g.name.toLowerCase() === name.toLowerCase()))
+      error = `Another class is already called ${name}.`;
+    else {
+      await db.update(schema.groups).set({ name, colour }).where(eq(schema.groups.id, id));
+      return back('saved');
+    }
+  }
+
+  if (act === 'move') {
+    const id = Number(form.get('id') ?? 0);
+    const dir = String(form.get('dir') ?? '');
+    const ordered = await db.select().from(schema.groups)
+      .orderBy(asc(schema.groups.sort), asc(schema.groups.name));
+    const i = ordered.findIndex((g) => g.id === id);
+    const j = dir === 'up' ? i - 1 : i + 1;
+    if (i >= 0 && j >= 0 && j < ordered.length) {
+      /* Swap, then renumber EVERYBODY to 10, 20, 30… Swapping two sort values
+       * alone only works if they are already distinct, and nothing guarantees
+       * that; renumbering from the order on screen makes the stored order
+       * match what was just seen. */
+      const arr = [...ordered];
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      for (const [n, g] of arr.entries()) {
+        await db.update(schema.groups).set({ sort: (n + 1) * 10 }).where(eq(schema.groups.id, g.id));
+      }
+    }
+    return back('moved');
+  }
+
+  if (act === 'active') {
+    const id = Number(form.get('id') ?? 0);
+    const active = String(form.get('active') ?? '') === '1' ? 1 : 0;
+    /* Archiving a class does NOT touch the children in it — they keep the
+     * group id and reappear with it if the class comes back. */
+    await db.update(schema.groups).set({ active }).where(eq(schema.groups.id, id));
+    return back(active ? 'shown' : 'hidden');
+  }
+}
+
+const groups = await allGroups(env, true);
+const done = Astro.url.searchParams.get('done');
+const DONE: Record<string, string> = {
+  added: 'Class added.', saved: 'Saved.', moved: 'Reordered.',
+  hidden: 'Hidden from the board. The children in it keep their class.',
+  shown: 'Back on the board.',
+};
+---
+<Shell title="Classes" back="/manage">
+  <h1>Classes</h1>
+  {error && <div class="card notice" style="margin:14px 0;"><strong>{error}</strong></div>}
+  {!error && done && DONE[done] && <div class="card ok" style="margin:14px 0;">{DONE[done]}</div>}
+
+  <div class="card">
+    {groups.map((g, i) => (
+      <details>
+        <summary class="row" style="cursor:pointer;">
+          <span class="chip" style={`${tintStyle(g.colour)} background:var(--lo); border:0; width:22px; height:22px; padding:0;`}></span>
+          <span class="row__main"><span class="row__name">{g.name}</span>
+            <span class="row__sub">{g.active ? 'On the board' : 'Hidden'}</span></span>
+          <span class="muted">edit</span>
+        </summary>
+        <div style="padding:6px 0 16px;">
+          <form method="POST" class="actions" style="margin-bottom:10px;">
+            <input type="hidden" name="action" value="edit" />
+            <input type="hidden" name="id" value={g.id} />
+            <input name="name" type="text" value={g.name} required style="flex:1; min-width:130px;" />
+            <select name="colour" style="width:130px;">
+              {GROUP_PALETTE.map((c) => (
+                <option value={c} selected={c === g.colour}>{c}</option>
+              ))}
+            </select>
+            <button class="go" type="submit">Save</button>
+          </form>
+          <div class="actions">
+            <form method="POST" style="margin:0; display:flex; gap:6px;">
+              <input type="hidden" name="action" value="move" />
+              <input type="hidden" name="id" value={g.id} />
+              <button class="go go--quiet" name="dir" value="up" type="submit" disabled={i === 0}>↑</button>
+              <button class="go go--quiet" name="dir" value="down" type="submit" disabled={i === groups.length - 1}>↓</button>
+            </form>
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="action" value="active" />
+              <input type="hidden" name="id" value={g.id} />
+              <input type="hidden" name="active" value={g.active ? '0' : '1'} />
+              <button class="go go--quiet" type="submit">{g.active ? 'Hide' : 'Show'}</button>
+            </form>
+          </div>
+        </div>
+      </details>
+    ))}
+    {groups.length === 0 && <p class="empty" style="margin:0;">No classes yet.</p>}
+  </div>
+
+  <div class="card">
+    <h2>Add a class</h2>
+    <form method="POST" class="actions">
+      <input type="hidden" name="action" value="add" />
+      <input name="name" type="text" placeholder="K-2nd" required autocomplete="off" style="flex:1; min-width:140px;" />
+      <button class="go" type="submit">Add</button>
+    </form>
+  </div>
+</Shell>

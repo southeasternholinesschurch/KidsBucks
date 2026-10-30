@@ -1,0 +1,39 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { leaderboard, groupsWithTotals } from '../lib/query';
+import { tintStyle } from '../lib/colour';
+
+/** Who is ahead. Looked at occasionally, so it may cost more than the board. */
+const env = Astro.locals.runtime.env;
+const top = await leaderboard(env, 25);
+const groups = (await groupsWithTotals(env)).slice().sort((a, b) => b.total - a.total);
+---
+<Shell title="Standings" back="/">
+  <h1>Standings</h1>
+
+  <h2 style="margin-top:22px;">Classes</h2>
+  <div class="card">
+    {groups.map((g, i) => (
+      <a class="row" href={`/group/${g.id}`}>
+        <span class="chip" style={`${tintStyle(g.colour)} background:var(--lo); color:#0d1017; border:0;`}>{i + 1}</span>
+        <span class="row__main"><span class="row__name">{g.name}</span>
+          <span class="row__sub">{g.kids} {g.kids === 1 ? 'child' : 'children'}</span></span>
+        <span class="row__n">{g.total}</span>
+      </a>
+    ))}
+    {groups.length === 0 && <p class="empty" style="margin:0;">No classes yet.</p>}
+  </div>
+
+  <h2 style="margin-top:26px;">Children</h2>
+  <div class="card">
+    {top.map((k, i) => (
+      <a class="row" href={`/kid/${k.id}`}>
+        <span class="chip">{i + 1}</span>
+        <span class="row__main"><span class="row__name">{k.name}</span>
+          <span class="row__sub">{k.groupName ?? 'No class yet'}</span></span>
+        <span class="row__n">{k.balance}</span>
+      </a>
+    ))}
+    {top.length === 0 && <p class="empty" style="margin:0;">Nobody has earned anything yet.</p>}
+  </div>
+</Shell>

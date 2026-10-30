@@ -1,0 +1,85 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { eq } from 'drizzle-orm';
+import { getDb, schema, nowIso } from '../db';
+import { grantLeader, lockMinutes, isLocked, lockRemaining } from '../lib/auth';
+import { allLeaders } from '../lib/query';
+import { verifyPin } from '../lib/pin';
+
+/**
+ * Signing in: tap your name, type your PIN.
+ *
+ * Two steps rather than one box, and deliberately so. Letting a PIN alone
+ * identify somebody would mean hashing it against every leader in turn, and
+ * PBKDF2 is expensive enough that a dozen of those would blow the Worker's
+ * CPU budget on every attempt. Naming yourself first costs exactly one.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+let error: string | null = null;
+
+const next = Astro.url.searchParams.get('next');
+/* Only ever back to a path on this site. An open redirect here would let a
+ * link drop somebody on somebody else's page after they typed a PIN. */
+const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const id = Number(form.get('leader') ?? 0);
+  const pin = String(form.get('pin') ?? '').trim();
+
+  const [leader] = await db.select().from(schema.leaders)
+    .where(eq(schema.leaders.id, id)).limit(1);
+
+  if (!leader || !leader.active) {
+    error = 'That leader is not set up here.';
+  } else if (isLocked(leader.lockedUntil)) {
+    const mins = lockRemaining(leader.lockedUntil);
+    error = `Too many wrong tries. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
+  } else if (await verifyPin(pin, leader.pinHash)) {
+    // A clean sign-in forgives everything that came before it.
+    await db.update(schema.leaders).set({ failCount: 0, lockedUntil: null })
+      .where(eq(schema.leaders.id, leader.id));
+    await grantLeader(env, Astro.cookies, leader.id, Astro.url.protocol === 'https:');
+    return Astro.redirect(safeNext, 303);
+  } else {
+    const fails = leader.failCount + 1;
+    const mins = lockMinutes(fails);
+    await db.update(schema.leaders).set({
+      failCount: fails,
+      lockedUntil: mins > 0 ? new Date(Date.now() + mins * 60_000).toISOString() : null,
+    }).where(eq(schema.leaders.id, leader.id));
+    error = mins > 0
+      ? `That PIN is not right. Locked for ${mins} minute${mins === 1 ? '' : 's'}.`
+      : 'That PIN is not right.';
+  }
+}
+
+const leaders = await allLeaders(env);
+const chosen = Number(Astro.url.searchParams.get('who') ?? 0);
+---
+<Shell title="Sign in" bare>
+  <div style="max-width:380px; margin:8vh auto 0;">
+    <h1 style="text-align:center;">KidsBucks</h1>
+    <p class="muted" style="text-align:center; margin:0 0 22px;">Tap your name.</p>
+
+    {error && <div class="card notice" style="margin-bottom:14px;"><strong>{error}</strong></div>}
+
+    <form method="POST" class="card">
+      <label class="field"><span>Who are you?</span>
+        <select name="leader" required>
+          {leaders.map((l) => (
+            <option value={l.id} selected={l.id === chosen}>{l.name}</option>
+          ))}
+        </select></label>
+      <label class="field"><span>Your PIN</span>
+        <input name="pin" type="password" inputmode="numeric" pattern="[0-9]*"
+               autocomplete="current-password" required autofocus placeholder="••••••" /></label>
+      <button class="go" type="submit" style="width:100%;">Go</button>
+    </form>
+
+    <p class="muted" style="text-align:center; margin-top:18px; font-size:14px;">
+      Children: scan your card instead.
+    </p>
+  </div>
+</Shell>

@@ -1,0 +1,49 @@
+---
+import Shell from '../../layouts/Shell.astro';
+import { sql } from 'drizzle-orm';
+import { getDb } from '../../db';
+import { allGroups, allLeaders } from '../../lib/query';
+
+/** The admin hub. Plain on purpose — this is a volunteer on a phone after a
+ *  service, not a child. */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+const [counts] = await db.all<{ kids: number; cards: number; entries: number }>(sql`
+  select (select count(*) from kids where active = 1)              as kids,
+         (select count(*) from cards where revoked_at is null)     as cards,
+         (select count(*) from ledger)                             as entries
+`);
+const groups = await allGroups(env);
+const leaders = await allLeaders(env);
+---
+<Shell title="Manage" back="/">
+  <h1>Manage</h1>
+  <p class="muted" style="margin:0 0 18px;">
+    {Number(counts?.kids ?? 0)} children · {groups.length} classes ·
+    {leaders.length} leaders · {Number(counts?.cards ?? 0)} active cards ·
+    {Number(counts?.entries ?? 0)} ledger entries
+  </p>
+
+  <div class="card">
+    <a class="row" href="/manage/kids">
+      <span class="row__main"><span class="row__name">Children</span>
+        <span class="row__sub">Add, import a roster, move between classes, archive</span></span>
+      <span class="muted">→</span>
+    </a>
+    <a class="row" href="/manage/groups">
+      <span class="row__main"><span class="row__name">Classes</span>
+        <span class="row__sub">Add, rename, recolour, reorder</span></span>
+      <span class="muted">→</span>
+    </a>
+    <a class="row" href="/manage/leaders">
+      <span class="row__main"><span class="row__name">Leaders</span>
+        <span class="row__sub">Add a volunteer, reset a PIN, remove somebody</span></span>
+      <span class="muted">→</span>
+    </a>
+    <a class="row" href="/manage/cards">
+      <span class="row__main"><span class="row__name">Cards</span>
+        <span class="row__sub">Make cards for a whole class and print them</span></span>
+      <span class="muted">→</span>
+    </a>
+  </div>
+</Shell>

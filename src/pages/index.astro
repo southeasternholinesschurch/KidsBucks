@@ -1,0 +1,73 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { groupsWithCounts, ungroupedCount } from '../lib/query';
+import { tintStyle } from '../lib/colour';
+import { UNGROUPED_COLOUR } from '../lib/palette';
+
+/**
+ * The board: the classes, not the children.
+ *
+ * This is the single biggest difference from the four-child app it grew out
+ * of, which showed every child on the front page. Two hundred cards is not a
+ * board, it is a wall — so the front page is eight or so classes, and finding
+ * one child is a search or a card scan.
+ */
+const env = Astro.locals.runtime.env;
+const leader = Astro.locals.leader!;
+const loose = await ungroupedCount(env);
+const groups = await groupsWithCounts(env);
+const children = groups.reduce((n, g) => n + g.kids, 0) + loose;
+const denied = Astro.url.searchParams.get('denied');
+const welcome = Astro.url.searchParams.get('welcome');
+---
+<Shell title="Classes">
+  {welcome && (
+    <div class="card ok" style="margin-bottom:14px;">
+      <strong>You're set up.</strong>
+      <span class="muted"> Add leaders and print cards from Manage.</span>
+    </div>
+  )}
+  {denied === 'admin' && (
+    <div class="card notice" style="margin-bottom:14px;">
+      <strong>That part is for admins.</strong>
+      <span class="muted"> Ask whoever set this up.</span>
+    </div>
+  )}
+
+  <h1>Classes</h1>
+  <p class="muted" style="margin:0 0 18px;">
+    {children} {children === 1 ? 'child' : 'children'} in {groups.length}
+    {groups.length === 1 ? ' class' : ' classes'}
+  </p>
+
+  <form action="/find" method="GET" style="margin-bottom:18px;">
+    <input name="q" type="search" placeholder="Find a child by name…"
+           aria-label="Find a child by name" autocomplete="off" />
+  </form>
+
+  <div class="tiles">
+    {groups.map((g) => (
+      <a class="tile tile--name" href={`/group/${g.id}`} style={tintStyle(g.colour)}>
+        <p class="tile__big">{g.name}</p>
+        <span class="tile__sub">{g.kids} {g.kids === 1 ? 'child' : 'children'}</span>
+      </a>
+    ))}
+    {loose > 0 && (
+      <a class="tile tile--name" href="/group/none" style={tintStyle(UNGROUPED_COLOUR)}>
+        <p class="tile__big">No class yet</p>
+        <span class="tile__sub">{loose} to sort out</span>
+      </a>
+    )}
+  </div>
+
+  {groups.length === 0 && loose === 0 && (
+    <div class="card">
+      <p style="margin:0 0 12px;">No children yet.</p>
+      {leader.role === 'admin'
+        ? <a class="go" href="/manage/kids" style="display:inline-block; text-decoration:none;">Add the roster</a>
+        : <p class="muted" style="margin:0;">Ask an admin to add the roster.</p>}
+    </div>
+  )}
+
+  <p style="margin-top:22px;"><a href="/standings">See the standings →</a></p>
+</Shell>

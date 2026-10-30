@@ -1,0 +1,45 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { searchKids } from '../lib/query';
+
+/**
+ * Finding one child among two hundred.
+ *
+ * Matches from the start of the name or the start of any word in it, which is
+ * how people actually look somebody up — and, not coincidentally, the only
+ * shape of match SQLite can answer from an index. A leading wildcard would
+ * mean reading every row on every keystroke.
+ */
+const env = Astro.locals.runtime.env;
+const q = (Astro.url.searchParams.get('q') ?? '').trim();
+const results = q ? await searchKids(env, q) : [];
+---
+<Shell title="Find" back="/">
+  <h1>Find a child</h1>
+  <form method="GET" style="margin:14px 0 18px;">
+    <input name="q" type="search" value={q} autofocus autocomplete="off"
+           placeholder="Type a name…" aria-label="Type a name" />
+  </form>
+
+  {q && results.length === 0 && (
+    <div class="card"><p class="muted" style="margin:0;">Nobody matching “{q}”.</p></div>
+  )}
+
+  {results.length > 0 && (
+    <div class="card">
+      {results.map((k) => (
+        <a class="row" href={`/kid/${k.id}`}>
+          <span class="row__main">
+            <span class="row__name">{k.name}</span>
+            <span class="row__sub">{k.groupName ?? 'No class yet'}</span>
+          </span>
+          <span class="row__n">{k.balance}</span>
+        </a>
+      ))}
+    </div>
+  )}
+
+  {!q && (
+    <p class="muted">Start typing a first or last name.</p>
+  )}
+</Shell>

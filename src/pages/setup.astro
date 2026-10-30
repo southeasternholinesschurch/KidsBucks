@@ -1,0 +1,111 @@
+---
+import Shell from '../layouts/Shell.astro';
+import { getDb, schema, nowIso } from '../db';
+import { isSetUp, putSetting, newSecret, grantLeader, KEY_SECRET, isValidLeaderPin } from '../lib/auth';
+import { hashPin } from '../lib/pin';
+import { parseRoster, groupsIn } from '../lib/roster';
+import { searchKey } from '../lib/bucks';
+import { colourForIndex } from '../lib/palette';
+
+/**
+ * First run: the first leader, and optionally the whole roster at once.
+ *
+ * Reachable only while there are no leaders — the middleware sends everything
+ * here until then and refuses it afterwards, so it cannot be used later to
+ * add an admin to somebody else's ministry.
+ */
+const env = Astro.locals.runtime.env;
+const db = getDb(env);
+if (await isSetUp(env)) return Astro.redirect('/', 302);
+
+let error: string | null = null;
+let preview: ReturnType<typeof parseRoster> | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData().catch(() => new FormData());
+  const name = String(form.get('name') ?? '').trim();
+  const pin = String(form.get('pin') ?? '').trim();
+  const again = String(form.get('pin2') ?? '').trim();
+  const rosterText = String(form.get('roster') ?? '');
+  preview = parseRoster(rosterText);
+
+  if (!name) error = 'Put your name in — the ledger records who awards what.';
+  else if (!isValidLeaderPin(pin)) error = 'A PIN is 6 to 12 digits.';
+  else if (pin !== again) error = 'The two PINs do not match.';
+  else {
+    const at = nowIso();
+    await putSetting(env, KEY_SECRET, newSecret());
+    const [leader] = await db.insert(schema.leaders).values({
+      name, pinHash: await hashPin(pin), role: 'admin', active: 1, failCount: 0, createdAt: at,
+    }).returning();
+
+    /* The roster, if one was pasted. Groups are created in the order they
+     * first appear, so the board reads the way the list was written. */
+    if (preview.rows.length) {
+      const groupId = new Map<string, number>();
+      for (const [i, g] of groupsIn(preview.rows).entries()) {
+        const [row] = await db.insert(schema.groups)
+          .values({ name: g, colour: colourForIndex(i), sort: (i + 1) * 10, active: 1, createdAt: at })
+          .returning();
+        groupId.set(g.toLowerCase(), row.id);
+      }
+      for (const r of preview.rows) {
+        await db.insert(schema.kids).values({
+          name: r.name, searchName: searchKey(r.name),
+          groupId: r.group ? groupId.get(r.group.toLowerCase()) ?? null : null,
+          active: 1, createdAt: at,
+        });
+      }
+    }
+
+    await grantLeader(env, Astro.cookies, leader.id, Astro.url.protocol === 'https:');
+    return Astro.redirect('/?welcome=1', 303);
+  }
+}
+
+---
+<Shell title="Set up" bare>
+  <div style="max-width:520px; margin:6vh auto 0;">
+    <h1>KidsBucks</h1>
+    <p class="muted" style="margin:0 0 22px;">
+      One leader to start with, and your roster if you have it to hand.
+    </p>
+
+    {error && <div class="card notice" style="margin-bottom:14px;"><strong>{error}</strong></div>}
+    {preview && preview.skipped.length > 0 && (
+      <div class="card notice" style="margin-bottom:14px;">
+        <strong>{preview.skipped.length} line(s) could not be read.</strong>
+        <ul class="muted" style="margin:8px 0 0; padding-left:18px; font-size:14px;">
+          {preview.skipped.slice(0, 5).map((s) => <li>Line {s.line}: {s.reason}</li>)}
+        </ul>
+      </div>
+    )}
+
+    <form method="POST" class="card">
+      <h2>You</h2>
+      <label class="field"><span>Your name</span>
+        <input name="name" type="text" required autocomplete="name" placeholder="Pastor Dave" /></label>
+      <label class="field"><span>Your PIN — 6 to 12 digits</span>
+        <input name="pin" type="password" inputmode="numeric" pattern="[0-9]*"
+               autocomplete="new-password" required placeholder="••••••" /></label>
+      <label class="field"><span>Again</span>
+        <input name="pin2" type="password" inputmode="numeric" pattern="[0-9]*"
+               autocomplete="new-password" required placeholder="••••••" /></label>
+      <p class="muted" style="margin:-6px 0 18px; font-size:14px;">
+        Six digits, not four: this address is reachable from anywhere. Wrong
+        guesses lock the account for a while.
+      </p>
+
+      <h2 style="margin-top:22px;">The children <span class="chip">optional</span></h2>
+      <p class="muted" style="margin:-4px 0 10px; font-size:14px;">
+        Paste a list — one child per line, optionally <code>Name, Class</code>.
+        Straight from a spreadsheet works. You can do this later instead.
+      </p>
+      <label class="field">
+        <textarea name="roster" placeholder={"Jacob Smith, K-2nd\nAva Johnson, K-2nd\nNoah Brown, 3rd-4th"}></textarea>
+      </label>
+
+      <button class="go" type="submit" style="width:100%;">Create and start</button>
+    </form>
+  </div>
+</Shell>
