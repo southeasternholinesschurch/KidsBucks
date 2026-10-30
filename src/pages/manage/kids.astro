@@ -7,6 +7,8 @@ import { parseRoster, groupsIn } from '../../lib/roster';
 import { searchKey } from '../../lib/bucks';
 import { colourForIndex } from '../../lib/palette';
 import { chunkRows } from '../../lib/chunk';
+import { handleCardAction, issueCard } from '../../lib/cardops';
+import CardBlock from '../../components/CardBlock.astro';
 
 /**
  * The roster.
@@ -24,15 +26,24 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData().catch(() => new FormData());
   const act = String(form.get('action') ?? '');
 
+  if (act.startsWith('card-')) {
+    const r = await handleCardAction(env, form);
+    if (r.handled) return Astro.redirect(`/manage/kids?done=${r.done}&kid=${r.kidId}`, 303);
+  }
+
   if (act === 'add') {
     const name = String(form.get('name') ?? '').trim().replace(/\s+/g, ' ');
     const gid = Number(form.get('group') ?? 0) || null;
     if (!name) error = 'Give them a name.';
     else {
-      await db.insert(schema.kids).values({
+      const [row] = await db.insert(schema.kids).values({
         name, searchName: searchKey(name), groupId: gid, active: 1, createdAt: nowIso(),
-      });
-      return back('added');
+      }).returning();
+      /* A card is issued straight away so the link is right there to copy
+       * onto a tag. Adding a child and then hunting for where cards live is
+       * two jobs; this is one. */
+      await issueCard(env, row.id);
+      return Astro.redirect(`/manage/kids?done=added&kid=${row.id}`, 303);
     }
   }
 
@@ -100,8 +111,18 @@ const showing = q
         .map((k) => ({ ...k, groupName: null as string | null }))
     : [];
 const done = Astro.url.searchParams.get('done');
+/* The child just created or just acted on, so their card block can be shown
+ * without making anybody go looking for it. */
+const focusId = Number(Astro.url.searchParams.get('kid') ?? 0) || null;
+const focus = focusId
+  ? (await db.select({ id: schema.kids.id, name: schema.kids.name })
+      .from(schema.kids).where(eq(schema.kids.id, focusId)).limit(1))[0] ?? null
+  : null;
 const DONE: Record<string, string> = {
-  added: 'Added.', saved: 'Saved.', archived: 'Archived — their history is kept.', shown: 'Back on the roster.',
+  added: 'Added, with a card ready below.', saved: 'Saved.',
+  archived: 'Archived — their history is kept.', shown: 'Back on the roster.',
+  card: 'Card made.', replaced: 'Replaced. The old card stopped working immediately.',
+  revoked: 'Card revoked.',
 };
 ---
 <Shell title="Children" back="/manage">
@@ -115,6 +136,16 @@ const DONE: Record<string, string> = {
         {report.groups > 0 && <> {report.groups} new {report.groups === 1 ? 'class' : 'classes'} created.</>}
         {report.skipped > 0 && <> {report.skipped} line(s) skipped.</>}
       </span>
+    </div>
+  )}
+
+  {focus && (
+    <div style="margin-bottom:14px;">
+      <p class="muted" style="margin:0 0 8px;">
+        <strong style="color:var(--ink);">{focus.name}</strong> —
+        <a href={`/kid/${focus.id}`}>open their page</a>
+      </p>
+      <CardBlock kidId={focus.id} kidName={focus.name} compact />
     </div>
   )}
 

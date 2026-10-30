@@ -1,0 +1,109 @@
+---
+import { activeCardsFor, cardUrl } from '../lib/cardops';
+import { formatCode } from '../lib/cards';
+
+/**
+ * A child's card: the link to write to their NFC tag, and the buttons to
+ * make or replace one.
+ *
+ * Used both where a child is created and at the bottom of their own page, so
+ * the two cannot behave differently. Posts back to whichever page embeds it;
+ * both handle the same three action names.
+ */
+interface Props { kidId: number; kidName: string; compact?: boolean }
+const { kidId, kidName, compact = false } = Astro.props;
+
+const env = Astro.locals.runtime.env;
+const cards = await activeCardsFor(env, kidId);
+const origin = Astro.url.origin;
+---
+<div class="card">
+  <h2>{compact ? 'Their card' : 'Card'}</h2>
+
+  {cards.length === 0 ? (
+    <>
+      <p class="muted" style="margin:-4px 0 12px; font-size:15px;">
+        No card yet. Make one, then copy the link onto an NFC tag.
+      </p>
+      <form method="POST">
+        <input type="hidden" name="action" value="card-new" />
+        <input type="hidden" name="kidId" value={kidId} />
+        <button class="go" type="submit">Make a card</button>
+      </form>
+    </>
+  ) : (
+    <>
+      {cards.map((c) => (
+        <div class="cardlink">
+          <p class="cardlink__code code">{formatCode(c.code)}</p>
+          {/* Shown as selectable text as well as a button, so it still works
+              if the clipboard is unavailable — which it is on any page not
+              served over HTTPS, including a phone on the local network. */}
+          <input class="cardlink__url code" type="text" readonly
+                 value={cardUrl(origin, c.code)}
+                 aria-label={`Card link for ${kidName}`}
+                 onclick="this.select()" />
+          <div class="actions" style="margin-top:8px;">
+            <button class="go copy" type="button" data-copy={cardUrl(origin, c.code)}>Copy link</button>
+            <form method="POST" style="margin:0;">
+              <input type="hidden" name="action" value="card-revoke" />
+              <input type="hidden" name="kidId" value={kidId} />
+              <input type="hidden" name="cardId" value={c.id} />
+              <button class="go go--quiet" type="submit"
+                      onclick={`return confirm('Revoke this card? It stops working straight away.')`}>
+                Revoke</button>
+            </form>
+          </div>
+          <p class="muted" style="margin:8px 0 0; font-size:13px;">
+            Made {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {c.lastUsedAt
+              ? <> · last used {new Date(c.lastUsedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</>
+              : <> · never used</>}
+          </p>
+        </div>
+      ))}
+
+      <form method="POST" style="margin-top:14px;">
+        <input type="hidden" name="action" value="card-replace" />
+        <input type="hidden" name="kidId" value={kidId} />
+        <button class="go go--quiet" type="submit"
+                onclick={`return confirm('Lost card? This revokes ${kidName}\\'s current card and makes a new one.')`}>
+          Lost — make a replacement</button>
+      </form>
+      <p class="muted" style="margin:8px 0 0; font-size:13px;">
+        Replacing revokes the old one immediately, including on a phone that
+        already scanned it.
+      </p>
+    </>
+  )}
+</div>
+
+<script>
+/**
+ * Copy to clipboard, with the honest fallback.
+ *
+ * navigator.clipboard only exists in a secure context, so on a phone browsing
+ * the dev server over plain http it is simply absent. Rather than failing
+ * silently, that case selects the text in the box next to the button so it
+ * can be copied by hand.
+ */
+document.addEventListener('click', async (ev) => {
+  const btn = (ev.target as HTMLElement)?.closest('.copy') as HTMLButtonElement | null;
+  if (!btn) return;
+  const text = btn.dataset.copy ?? '';
+  const say = (msg: string) => {
+    const was = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(() => { btn.textContent = was; }, 1600);
+  };
+  try {
+    if (!navigator.clipboard) throw new Error('no clipboard');
+    await navigator.clipboard.writeText(text);
+    say('Copied');
+  } catch {
+    const box = btn.closest('.cardlink')?.querySelector('.cardlink__url') as HTMLInputElement | null;
+    if (box) { box.focus(); box.select(); say('Select & copy'); }
+    else say('Copy by hand');
+  }
+});
+</script>

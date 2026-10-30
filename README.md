@@ -19,8 +19,11 @@ program — see **Why this is not the family app** below.
   to undo the whole thing if you picked the wrong class.
 - **Leader accounts.** Tap your name, type your PIN. Every ledger entry says
   who made it, which is what makes "who gave Jayden fifty bucks" answerable.
-- **Printed cards.** Make cards for a whole class, print them three to a row,
-  cut them up. A child scans theirs and sees their own total and nothing else.
+- **Cards, printed or NFC.** Issued one at a time as you add a child (the
+  link is right there to copy onto a tag), from the bottom of any child's
+  page, or for a whole class at once and printed three to a row. A child
+  scans theirs and sees their own total and nothing else. Lost cards are
+  replaced in one tap, and the old one dies immediately.
 - **Roster import.** Paste a list — or a spreadsheet — and it creates the
   children and the classes in one go.
 - **Standings.** Class totals and a top-25, for the competitive bit.

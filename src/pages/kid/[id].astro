@@ -5,6 +5,8 @@ import { getDb, schema, nowIso } from '../../db';
 import { getKid, balanceOfKid, historyPage, PAGE } from '../../lib/query';
 import { parseAmount, PRESETS, MAX_AMOUNT, REASON_LABEL, encouragement } from '../../lib/bucks';
 import { tintStyle } from '../../lib/colour';
+import { handleCardAction } from '../../lib/cardops';
+import CardBlock from '../../components/CardBlock.astro';
 import { UNGROUPED_COLOUR } from '../../lib/palette';
 
 /**
@@ -35,6 +37,10 @@ if (Astro.request.method === 'POST') {
    * request — a child who finds the form can post to it. */
   if (!leader) {
     error = 'Only a leader can change bucks.';
+  } else if (act.startsWith('card-')) {
+    const r = await handleCardAction(env, form);
+    if (r.handled) return back(r.done!);
+    error = 'Nothing to do.';
   } else if (act === 'undo') {
     const entryId = Number(form.get('entryId') ?? 0);
     const [entry] = await db.select().from(schema.ledger)
@@ -78,7 +84,12 @@ const { rows, more } = await historyPage(env, id, before);
 
 const colour = kid.groupColour ?? UNGROUPED_COLOUR;
 const done = Astro.url.searchParams.get('done');
-const DONE: Record<string, string> = { award: 'Added.', spend: 'Taken off.', undone: 'Put back.' };
+const DONE: Record<string, string> = {
+  award: 'Added.', spend: 'Taken off.', undone: 'Put back.',
+  card: 'Card made. Copy the link onto their tag.',
+  replaced: 'Replaced. The old card stopped working immediately.',
+  revoked: 'Card revoked.',
+};
 const when = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 ---
@@ -185,4 +196,12 @@ const when = (iso: string) =>
     </p>
   )}
   {before && <p style="margin-top:8px;"><a href={`/kid/${id}`}>← Back to the newest</a></p>}
+
+  {/* Leaders only. A child holding a card has no business reissuing it, and
+      the middleware has already confined them to this page. */}
+  {leader && (
+    <div style="margin-top:26px;">
+      <CardBlock kidId={id} kidName={kid.name} />
+    </div>
+  )}
 </Shell>

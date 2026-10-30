@@ -176,3 +176,11 @@ input::placeholder, textarea::placeholder { color: rgba(255,255,255,.42); }
 .tile--name { display: flex; flex-direction: column; justify-content: center; min-height: 104px; }
 .tile__big { font-size: clamp(20px, 5.2vw, 26px); font-weight: 900; margin: 0 0 6px;
              letter-spacing: -0.02em; line-height: 1.1; }
+
+/* ---- a child's card link ----
+ * The URL is the deliverable: it gets written to an NFC tag, so it is shown
+ * as selectable text as well as behind a copy button.
+ */
+.cardlink + .cardlink { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.cardlink__code { font-size: 20px; font-weight: 800; margin: 0 0 8px; letter-spacing: .08em; }
+.cardlink__url { font-size: 13px; }
