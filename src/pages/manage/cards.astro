@@ -1,60 +1,24 @@
 ---
 import Shell from '../../layouts/Shell.astro';
 import { and, isNull, inArray } from 'drizzle-orm';
-import { getDb, schema, nowIso } from '../../db';
+import { getDb, schema } from '../../db';
 import { allGroups, kidsInGroup } from '../../lib/query';
-import { newCardCode, formatCode } from '../../lib/cards';
+import { formatCode } from '../../lib/cards';
 
 /**
- * Cards, by the class rather than one at a time.
+ * Seeing and printing the cards a class already has.
  *
- * Issuing two hundred cards individually is the kind of job that stops a
- * system being adopted, so this makes them for everyone in a class who does
- * not already have one, and prints them three to a row on plain paper.
+ * It does NOT make them. Cards are issued on each child's own page, because
+ * the link is the deliverable and writing it to an NFC tag is a
+ * one-child-at-a-time job — you are holding the tag. Generating two hundred
+ * codes nobody writes to anything was a feature that looked useful and never
+ * would have been.
  */
 const env = Astro.locals.runtime.env;
 const db = getDb(env);
-let error: string | null = null;
-let made = 0;
-
 const groups = await allGroups(env);
 const gRaw = Astro.url.searchParams.get('group');
 const groupId = gRaw === 'none' ? null : gRaw ? Number(gRaw) : undefined;
-
-if (Astro.request.method === 'POST') {
-  const form = await Astro.request.formData().catch(() => new FormData());
-  const act = String(form.get('action') ?? '');
-
-  if (act === 'issue') {
-    const gid = String(form.get('group') ?? '');
-    const target = gid === 'none' ? null : Number(gid);
-    const kids = await kidsInGroup(env, target);
-    if (kids.length === 0) error = 'Nobody in that class yet.';
-    else {
-      const ids = kids.map((k) => k.id);
-      const have = new Set((await db.select({ kidId: schema.cards.kidId }).from(schema.cards)
-        .where(and(inArray(schema.cards.kidId, ids), isNull(schema.cards.revokedAt))))
-        .map((r) => r.kidId));
-      const at = nowIso();
-      for (const k of kids) {
-        if (have.has(k.id)) continue;
-        /* Retry on the unique index. A collision between two 60-bit codes is
-         * not going to happen, but "not going to happen" and "handled" are
-         * different things, and the handling is four lines. */
-        for (let i = 0; i < 5; i++) {
-          try {
-            await db.insert(schema.cards).values({
-              kidId: k.id, code: newCardCode(), label: null, createdAt: at,
-            });
-            made++; break;
-          } catch { /* taken; draw another */ }
-        }
-      }
-      return Astro.redirect(`/manage/cards?group=${gid}&made=${made}`, 303);
-    }
-  }
-
-}
 
 type Row = { cardId: number; code: string; name: string; groupName: string | null };
 let rows: Row[] = [];
@@ -72,36 +36,15 @@ if (groupId !== undefined) {
   }
 }
 const origin = Astro.url.origin;
-const justMade = Number(Astro.url.searchParams.get('made') ?? 0);
 ---
 <Shell title="Cards" back="/manage">
   <div class="noprint">
     <h1>Cards</h1>
-    {error && <div class="card notice" style="margin:14px 0;"><strong>{error}</strong></div>}
-    {justMade > 0 && (
-      <div class="card ok" style="margin:14px 0;">
-        Made {justMade} new {justMade === 1 ? 'card' : 'cards'}. Print the sheet below.
-      </div>
-    )}
-    {justMade === 0 && Astro.url.searchParams.has('made') && (
-      <div class="card ok" style="margin:14px 0;">Everyone in that class already had a card.</div>
-    )}
-
-    <div class="card">
-      <h2>Make cards for a class</h2>
-      <form method="POST" class="actions">
-        <input type="hidden" name="action" value="issue" />
-        <select name="group" style="flex:1; min-width:150px;">
-          {groups.map((g) => <option value={g.id} selected={gRaw === String(g.id)}>{g.name}</option>)}
-          <option value="none" selected={gRaw === 'none'}>No class yet</option>
-        </select>
-        <button class="go" type="submit">Make the missing ones</button>
-      </form>
-      <p class="muted" style="margin:12px 0 0; font-size:14px;">
-        Only children without an active card get one, so this is safe to press
-        twice.
-      </p>
-    </div>
+    <p class="muted" style="margin:0 0 18px;">
+      Cards are made one at a time, on each child's own page — that is where
+      the link is, and writing an NFC tag is a one-child-at-a-time job anyway.
+      This page is for seeing and printing the ones that exist.
+    </p>
 
     <div class="card">
       <h2>Show a class's cards</h2>

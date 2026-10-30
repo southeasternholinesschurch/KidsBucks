@@ -91,20 +91,23 @@ them in person. You can reset a PIN here if they forget, which also clears any
 lockout. Keep at least two admins: the app refuses to remove the last one, but
 a second pair of hands is worth having anyway.
 
-**Cards** — there are three ways in, and they all produce the same thing: a
-link.
+**Cards** — a card is a link, and it is made one child at a time, because
+writing an NFC tag is a one-child-at-a-time job: you are holding the tag.
 
 - **As you add a child.** Adding one child issues their card straight away and
-  shows the link with a *Copy link* button, so you can write it to an NFC tag
+  shows the link with a *Copy link* button, so you can write it to a tag
   without going anywhere else.
-- **On a child's page.** Scroll to the bottom. Same block: the code, the
-  link, a copy button, and *Lost or broken — new link*.
-- **A whole class at once.** Manage → Cards, pick a class, press "Make the
-  missing ones", then "Print these cards". Only children without an active
-  card get one, so it is safe to press twice. Three per row on plain paper.
+- **On a child's page.** Scroll to the bottom. Same block: the code, the link,
+  a copy button, and *Lost or broken — new link*. If a child has no card yet
+  — anyone who arrived through a roster import — there is a *Make a card*
+  button instead.
 
 **For NFC tags**, copy the link and write it to the tag with any NFC writer
-app — it is an ordinary URL. Tapping the tag opens that child's page.
+app; it is an ordinary URL, and tapping the tag opens that child's page.
+
+**Manage → Cards** does not make cards. It shows the ones a class already has
+and prints them three to a row, for anyone who wants paper cards as well as
+or instead of tags.
 
 **If a card is lost**, use *Lost or broken — new link* on the child's page.
 That kills the old one immediately — including on a phone that has already
