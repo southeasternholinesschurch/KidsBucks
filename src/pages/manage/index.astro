@@ -20,7 +20,7 @@ const leaders = await allLeaders(env);
   <h1>Manage</h1>
   <p class="muted" style="margin:0 0 18px;">
     {Number(counts?.kids ?? 0)} children · {groups.length} classes ·
-    {leaders.length} leaders · {Number(counts?.cards ?? 0)} active cards ·
+    {leaders.length} leaders · {Number(counts?.cards ?? 0)} with a card ·
     {Number(counts?.entries ?? 0)} ledger entries
   </p>
 
@@ -38,11 +38,6 @@ const leaders = await allLeaders(env);
     <a class="row" href="/manage/leaders">
       <span class="row__main"><span class="row__name">Leaders</span>
         <span class="row__sub">Add a volunteer, reset a PIN, remove somebody</span></span>
-      <span class="muted">→</span>
-    </a>
-    <a class="row" href="/manage/cards">
-      <span class="row__main"><span class="row__name">Cards</span>
-        <span class="row__sub">See and print the cards a class already has</span></span>
       <span class="muted">→</span>
     </a>
   </div>

@@ -148,24 +148,6 @@ input::placeholder, textarea::placeholder { color: rgba(255,255,255,.42); }
 .empty { color: var(--muted); padding: 10px 0 2px; }
 .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; }
 
-/* ---- printable card sheet ---- */
-.sheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.pcard { border: 1px dashed rgba(0,0,0,.35); border-radius: 10px; padding: 12px;
-         background: #fff; color: #111; break-inside: avoid; }
-.pcard__name { font-weight: 800; font-size: 17px; margin: 0 0 2px; }
-.pcard__group { font-size: 12px; color: #555; margin: 0 0 8px; }
-.pcard__code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-               font-size: 16px; letter-spacing: .08em; font-weight: 700; }
-.pcard__url { font-size: 10px; color: #555; word-break: break-all; margin-top: 4px; }
-@media print {
-  /* The sheet is the only thing that should reach paper. */
-  body { background: #fff; color: #000; padding: 0; }
-  .bar, .noprint { display: none !important; }
-  .wrap { max-width: none; padding: 0; }
-  .sheet { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .pcard { border-color: #999; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   .btn:active { transform: none; }

@@ -19,13 +19,13 @@ program — see **Why this is not the family app** below.
   to undo the whole thing if you picked the wrong class.
 - **Leader accounts.** Tap your name, type your PIN. Every ledger entry says
   who made it, which is what makes "who gave Jayden fifty bucks" answerable.
-- **Cards, as NFC tags or paper.** A card is a link. It is issued one child
-  at a time — as you add them, or from the bottom of their page — because
-  writing a tag is a one-child-at-a-time job. A child scans theirs and sees
-  their own total and nothing else. Lost cards are replaced in one tap and the
-  old one dies immediately; archiving a child kills their card too. There is
-  no bare "revoke", and no bulk issue: generating two hundred codes nobody
-  writes to anything looked useful and never would have been.
+- **Cards are NFC tags.** A card is a link, issued one child at a time — as
+  you add them, or from the bottom of their page — because writing a tag means
+  holding one. Tapping it opens that child's page, showing their own total and
+  nothing else. Lost cards are replaced in one tap and the old one dies
+  immediately; archiving a child kills their card too. There is deliberately
+  no bare "revoke", no bulk issue and no printing: each of those looked useful
+  and none of them survived contact with how the tags actually get made.
 - **Roster import.** Paste a list — or a spreadsheet — and it creates the
   children and the classes in one go.
 - **Standings.** Class totals and a top-25, for the competitive bit.

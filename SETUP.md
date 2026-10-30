@@ -105,10 +105,6 @@ writing an NFC tag is a one-child-at-a-time job: you are holding the tag.
 **For NFC tags**, copy the link and write it to the tag with any NFC writer
 app; it is an ordinary URL, and tapping the tag opens that child's page.
 
-**Manage → Cards** does not make cards. It shows the ones a class already has
-and prints them three to a row, for anyone who wants paper cards as well as
-or instead of tags.
-
 **If a card is lost**, use *Lost or broken — new link* on the child's page.
 That kills the old one immediately — including on a phone that has already
 scanned it, because the session names the card rather than the child — and
